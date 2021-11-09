@@ -10,7 +10,7 @@ from Funcs import *
 class Multiphase(Flow):
 
     """"Initialise material parameters, mesh and test case data"""
-    def __init__(self, test_case, method, fluid, ls_scheme, lsr_method,
+    def __init__(self, test_case, method, fluid, constitutive_equation, stability, ls_scheme, lsr_method,
                  rein_steps, size, Seps, Sdtau, location, dimension, ls_order):
 
         super().__init__()
@@ -18,6 +18,8 @@ class Multiphase(Flow):
         self.test_case = test_case
         self.method = method
         self.fluid = fluid
+        self.constitutive_equation = constitutive_equation
+        self.stability = stability
         self.ls_scheme = ls_scheme
         self.lsr_method = lsr_method
         self.size = size
@@ -40,10 +42,10 @@ class Multiphase(Flow):
         self.amin = RectangleMesh(Point(0,0),Point(1,2),200,400).hmin()
         self.hmin = self.mesh.hmin()
 
-        # self.pli_in = None
-        # self.pli_out = 2
+        self.pli_in = None
+        self.pli_out = 2
 
-        self.T = 9
+        self.T = 3
         self.dt = (1/self.size)/2
         self.num_steps = int(self.T/self.dt)
         self.rein_div = 1
@@ -51,6 +53,8 @@ class Multiphase(Flow):
 
         self.comm = MPI.comm_world
         self.rank = MPI.rank(self.comm)
+
+        self.facet_normal = FacetNormal(mesh)
 
         if (self.method == 'NCons'):
 
@@ -67,6 +71,8 @@ class Multiphase(Flow):
             self.d = 0.10
             self.eps = Constant(0.50*self.hmin**(1-self.d)) 
             self.dtau = Constant(0.50*self.hmin**(1+self.d)) 
+            self.eta_s = None
+            self.eta_p = None
 
         elif (self.test_case == 2):
 
@@ -76,16 +82,17 @@ class Multiphase(Flow):
             self.rho2 = [1000, "Outside"]
             self.sigma = 1.96
             self.d = 0.10
-            self.eps = Constant(0.50*self.hmin**(1-self.d)) 
-            self.dtau = Constant(0.50*self.hmin**(1+self.d)) 
+            self.eps = Constant(0.50*self.amin**(1-self.d)) 
+            self.dtau = Constant(0.50*self.amin**(1+self.d)) 
 
         if (self.fluid == 'Viscoelastic'):
 
-            self.lamb1 = 10
             self.eta_s_in = 1
             self.eta_s_out = 10
             self.eta_p_in = 0
             self.eta_p_out = 9
+            self.lamb1_in = 0
+            self.lamb1_out = 1 
             self.rho1 = [0.1, "Inside"]
             self.rho2 = [10, "Outside"]
             self.sigma = 0.245
@@ -119,33 +126,14 @@ class Multiphase(Flow):
 
     """Initialise FEM spaces and functions"""
     def fem_data(self):
-
+        
+        """ Level Set spaces/functions """
         self.Q = FunctionSpace(self.mesh, 'CG', self.ls_order)
-        self.P = FunctionSpace(self.mesh, 'CG', 1)
-        self.V = VectorFunctionSpace(self.mesh, 'CG', 2)
-        self.T = TensorFunctionSpace(self.mesh, 'CG', 2)
-
         self.Vnorm = VectorFunctionSpace(self.mesh, 'CG', 1)
-        self.Vgrad = VectorFunctionSpace(self.mesh, 'CG', 1)
-        self.Vcurv = FunctionSpace(self.mesh, 'CG', 1)
-
-        self.u = TrialFunction(self.V) 
-        self.v = TestFunction(self.V)
-        self.p = TrialFunction(self.P)
-        self.q = TestFunction(self.P)
-
-        self.u0 = Function(self.V) 
-        self.u_  = Function(self.V) 
-        self.p0 = Function(self.P)
-        self.p_  = Function(self.P)
 
         self.phi = TrialFunction(self.Q)
         self.psi = TestFunction(self.Q)
         self.phi_rein = Function(self.Q)
-
-        self.tau = TrialFunction(self.T)
-        self.zeta = TestFunction(self.T)
-        self.tau0 = Function(self.T)
 
         if (self.method == 'NCons'):
 
@@ -155,10 +143,6 @@ class Multiphase(Flow):
             self.sign = sgn(self.phi0, self.eps1)
             self.phin = Function(self.Vnorm)
             self.psin = TestFunction(self.Vnorm)
-            self.phig = Function(self.Vgrad)
-            self.psig = TestFunction(self.Vgrad)
-            self.phic = Function(self.Vcurv)
-            self.psic = TestFunction(self.Vcurv)
         
         elif (self.method == 'Cons'):
 
@@ -167,10 +151,59 @@ class Multiphase(Flow):
             self.phiic = interpolate(self.hdf,self.Q)
             self.phin = Function(self.Vnorm)
             self.psin = TestFunction(self.Vnorm)
-            self.phig = Function(self.Vgrad)
-            self.psig = TestFunction(self.Vgrad)
-            self.phic = Function(self.Vcurv)
-            self.psic = TestFunction(self.Vcurv)
+
+        """ Pressure spaces/functions """
+        self.P = FunctionSpace(self.mesh, 'CG', 1)
+
+        self.p = TrialFunction(self.P)
+        self.q = TestFunction(self.P)
+        self.p0 = Function(self.P)
+        self.p_  = Function(self.P)
+
+        """ Velocity spaces/functions """
+        if (self.stability == None):
+            self.V = VectorFunctionSpace(self.mesh, 'CG', 2)
+
+            self.u = TrialFunction(self.V) 
+            self.v = TestFunction(self.V)
+            self.u0 = Function(self.V) 
+            self.u_ = Function(self.V)
+
+        """ Stress spaces/functions """
+        if (self.stability == None):
+            self.T = TensorFunctionSpace(self.mesh, 'CG', 2)
+
+        self.tau = TrialFunction(self.T)
+        self.zeta = TestFunction(self.T)
+        self.tau0 = Function(self.T)
+
+        """ DEVSSG-DG spaces/functions"""
+
+        if (self.stability == 'DEVSSG-DG'):
+            self.T = TensorFunctionSpace(self.mesh, 'DG', 0)
+            self.V_element = VectorElement('CG', self.mesh.ufl_cell(), 2) 
+            self.D_element = TensorElement('DG', self.mesh.ufl_cell(), 2)
+            self.VD = self.V_element*self.D_element
+            self.W = FunctionSpace(self.mesh, self.VD)
+
+            self.u, self.G = TrialFunctions(self.W)
+            self.v, self.R = TestFunctions(self.W)
+
+            self.w0 = Function(self.W)
+            (self.u0, self.G0) = split(self.w0)
+
+            self.w_ = Function(self.W)
+            (self.u_, self.G_) = split(self.w_)
+
+
+
+
+
+
+
+
+
+
 
     """Construct boundary conditions"""
     def bcs(self):
@@ -203,20 +236,20 @@ class Multiphase(Flow):
 
         if (self.method == 'NCons'):
 
-            self.rho = rho_noncon(self.phi, self.rho1[0], self.rho2[0], self.eps)
-            self.rho0 = rho_noncon(self.phi00, self.rho1[0], self.rho2[0], self.eps)
+            self.rho = phasify_noncon(self.phi, self.rho1[0], self.rho2[0], self.eps)
+            self.rho0 = phasify_noncon(self.phi00, self.rho1[0], self.rho2[0], self.eps)
 
             if (self.fluid == 'Newtonian'):
 
-                self.mu = mu_noncon(self.phi, self.mu1[0], self.mu2[0], self.eps)
+                self.mu = phasify_noncon(self.phi, self.mu1[0], self.mu2[0], self.eps)
             
             elif (self.fluid == 'GNF_PL'):
 
-                self.mu = mu_noncon(self.phi, powerlaw(self.u0, self.pli_in), powerlaw(self.u0, self.pli_out), self.eps)
+                self.mu = phasify_noncon(self.phi, powerlaw(self.u0, self.pli_in), powerlaw(self.u0, self.pli_out), self.eps)
 
             elif (self.fluid == 'GNF_C'):
 
-                self.mu = mu_noncon(self.phi, 
+                self.mu = phasify_noncon(self.phi, 
                                     carreau(self.u0, self.pli_in, self.eta0_in, self.etainf_in, self.lamb_in), 
                                     carreau(self.u0, self.pli_out, self.eta0_out, self.etainf_out, self.lamb_out),
                                     self.eps)
@@ -227,28 +260,30 @@ class Multiphase(Flow):
 
         elif (self.method == 'Cons'):
 
-            self.rho = rho_con(self.phi, self.rho1[0], self.rho2[0])
-            self.rho0 = rho_con(self.phi00, self.rho1[0], self.rho2[0])
+            self.rho = phasify_con(self.phi, self.rho1[0], self.rho2[0])
+            self.rho0 = phasify_con(self.phi00, self.rho1[0], self.rho2[0])
 
             if (self.fluid == 'Newtonian'):
 
-                self.mu = mu_con(self.phi, self.mu1[0], self.mu2[0])
+                self.mu = phasify_con(self.phi, self.mu1[0], self.mu2[0])
             
             elif (self.fluid == 'GNF_PL'):
 
-                self.mu = mu_con(self.phi, self.mu1[0], powerlaw(self.u0, self.pli_out))
+                self.mu = phasify_con(self.phi, self.mu1[0], powerlaw(self.u0, self.pli_out))
 
             elif (self.fluid == 'GNF_C'):
 
-                self.mu = mu_con(self.phi, 
+                self.mu = phasify_con(self.phi, 
                                 carreau(self.u0, self.pli_in, self.eta0_in, self.etainf_in, self.lamb_in), 
                                 carreau(self.u0, self.pli_out, self.eta0_out, self.etainf_out, self.lamb_out))
 
             elif (self.fluid == 'Viscoelastic'):
 
-                self.eta_s = eta_s_con(self.phi, self.eta_s_in, self.eta_s_out)
+                self.eta_s = phasify_con(self.phi, self.eta_s_in, self.eta_s_out)
 
-                self.eta_p = eta_p_con(self.phi, self.eta_p_in, self.eta_p_out)
+                self.eta_p = phasify_con(self.phi, self.eta_p_in, self.eta_p_out)
+
+                self.lamb1 = phasify_con(self.phi, self.lamb1_in, self. lamb1_out)
 
                 self.mu = None
 
@@ -304,7 +339,7 @@ class Multiphase(Flow):
             self.timeseries = [self.t, area, x_com, y_com, circ, u_rise, v_rise, norm_grad]
 
             if (self.rank == 0):
-                with open('oot_cls_ve/eggs_oot_cls.csv', 'a') as csvfile:
+                with open('oot_cls/eggs_oot_cls.csv', 'a') as csvfile:
                     f = csv.writer(csvfile, delimiter='\t',lineterminator='\n',)
                     f.writerow(self.timeseries)
 
@@ -319,7 +354,7 @@ class Multiphase(Flow):
 
         elif (self.method == 'Cons'):
 
-            with XDMFFile("oot_cls_ve/phi_read.xdmf") as outfile:
+            with XDMFFile("oot_cls/phi_read.xdmf") as outfile:
 
                 outfile.write_checkpoint(self.phi0, "phi", 0, append=True)
 
@@ -343,18 +378,18 @@ class Multiphase(Flow):
 
         elif (self.method == 'Cons'):
 
-            self.xdmf_file_phi = XDMFFile('oot_cls_ve/phi.xdmf')
-            self.xdmf_file_u = XDMFFile('oot_cls_ve/u.xdmf')
-            self.xdmf_file_p = XDMFFile('oot_cls_ve/p.xdmf')
+            self.xdmf_file_phi = XDMFFile('oot_cls/phi.xdmf')
+            self.xdmf_file_u = XDMFFile('oot_cls/u.xdmf')
+            self.xdmf_file_p = XDMFFile('oot_cls/p.xdmf')
 
             if (self.fluid == 'Viscoelastic'):
 
                 self.xdmf_file_tau = XDMFFile('oot_cls_ve/tau.xdmf')
                 self.xdmf_file_tau.parameters['flush_output'] = True 
 
-            if (self.rank == 0 and os.path.isfile('oot_cls_ve/eggs_oot_cls.csv') == True):
+            if (self.rank == 0 and os.path.isfile('oot_cls/eggs_oot_cls.csv') == True):
 
-                os.remove('oot_cls_ve/eggs_oot_cls.csv')
+                os.remove('oot_cls/eggs_oot_cls.csv')
             
         self.xdmf_file_phi.parameters['flush_output'] = True
         self.xdmf_file_u.parameters['flush_output'] = True
@@ -389,11 +424,11 @@ class Multiphase(Flow):
 
         self.ns_form(self.rho, self.rho0, self.mu, self.u, self.u0, self.u_,
                      self.p, self.p0, self.p_, self.phi, self.v, self.q,
-                     self.phig, self.phic, self.tau0, self.eta_s, self.eta_p)
+                     self.tau0, self.eta_s)
 
         if (self.fluid == 'Viscoelastic'):
 
-            self.oldroyd_b_form(self.tau, self.tau0, self.zeta, self.u0)
+            self.constitutive_equation_form(self.tau, self.tau0, self.zeta, self.u0, self.lamb1, self.eta_p, self.eta_s)
             self.tau = Function(self.T)
 
         self.t = 0
@@ -423,9 +458,9 @@ class Multiphase(Flow):
 
             if (self.fluid == 'Viscoelastic'):
 
-                self.oldroydb_solve()
+                self.constitutive_equation_solve()
 
-            self.ns_solve(self.bc_ns, self.u_, self.p_, self.phig, self.phic, self.psig, self.psic, self.phi)
+            self.ns_solve(self.bc_ns, self.u_, self.p_)
 
             self.u0.assign(self.u_)
             self.p0.assign(self.p_)
@@ -446,13 +481,15 @@ class Multiphase(Flow):
         self.process_shape()
 
 
-case1 = Multiphase(test_case = 1,
+case1 = Multiphase(test_case = 2,
                    method = 'Cons',
-                   fluid = 'Viscoelastic',
-                   ls_scheme = 'CN',
+                   fluid = 'Newtonian',
+                   constitutive_equation = None,
+                   stability = None,
+                   ls_scheme = 'Euler',
                    lsr_method = 'old_method',
-                   rein_steps = 1,
-                   size = 100,
+                   rein_steps = 3,
+                   size = 300,
                    Seps = None,
                    Sdtau = None,
                    location = 'HAWK',
@@ -463,3 +500,4 @@ case1.run()
 
 
 """good results were eps: 0.9 dtau: 1.10 size: 200 euler scheme old method order 2"""
+

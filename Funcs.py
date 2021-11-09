@@ -77,3 +77,15 @@ def eta_p_con(phi, eta_p_in, eta_p_out):
 def lamb1_con(phi, lamb1_in, lamb1_out):
 
     return lamb1_in*phi + lamb1_out*(1-phi)
+
+def poly_flux(u, n, tau):
+
+    return (dot(u,n)*tau + abs(dot(u,n))*tau)/2
+
+def phasify_con(phi, param_in, param_out):
+
+    return param_in*phi + param_out*(1-phi)
+
+def phasify_noncon(phi, param_in, param_out, eps):
+    
+    return param_out*heaviside(phi, eps) + param_in*(1-heaviside(phi, eps))

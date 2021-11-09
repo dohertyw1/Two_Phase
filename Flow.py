@@ -13,8 +13,8 @@ class Flow():
         self.lsr_preconditioner = 'default'
         self.ns_linear_solver = 'gmres'
         self.ns_preconditioner = 'default'
-        self.oldroyd_b_linear_solver = 'gmres'
-        self.oldroyd_b_preconditioner = 'default'
+        self.constitutive_equation_linear_solver = 'gmres'
+        self.constitutive_equation_preconditioner = 'default'
         
     """Construct weak form for level set equation"""
     def ls_form(self, phi, phi0, psi, u0):
@@ -82,28 +82,52 @@ class Flow():
         self.F_clsr = F
 
     """Construct the weak form for the Oldroyd-B viscoelastic constitutive equation."""
-    def oldroyd_b_form(self, tau, tau0, zeta, u0):
+    def constitutive_equation_form(self, tau, tau0, zeta, u0, lamb1, eta_p, Wi, alpha):
 
-        F = (1/self.dt)*inner(tau-tau0,zeta)*dx \
-          + 0.5*(inner(dot(u0,nabla_grad(tau)) \
-          - dot(tau, trans(grad(u0))) \
-          - dot(grad(u0), tau),zeta)*dx \
-          + (1/self.lamb1)*inner(tau-self.Id,zeta)*dx) \
-          + 0.5*(inner(dot(u0,nabla_grad(tau0)) \
-          - dot(tau0, trans(grad(u0))) \
-          - dot(grad(u0), tau0),zeta)*dx \
-          + (1/self.lamb1)*inner(tau0-self.Id,zeta)*dx)
+        if (self.constitutive_equation == 'OB'):
 
-        self.a_ob = lhs(F)
-        self.m_ob = rhs(F)
+            if (self.stability == 'DEVSSG-DG'):
 
-        self.A_ob = PETScMatrix()
-        self.M_ob = PETScVector()
+                pass
+
+            elif (self.stability == None):
+
+                F = lamb1*((1/self.dt)*inner(tau-tau0,zeta)*dx \
+                + 0.5*(inner(dot(u0,nabla_grad(tau)) \
+                - dot(tau, trans(grad(u0))) \
+                - dot(grad(u0), tau),zeta)*dx) \
+                + 0.5*(inner(dot(u0,nabla_grad(tau0)) \
+                - dot(tau0, trans(grad(u0))) \
+                - dot(grad(u0), tau0),zeta)*dx)) \
+                + (eta_p)*inner(grad(u0)+grad(u0).T,zeta)*dx \
+                + 0.5*inner(tau, zeta)*dx \
+                + 0.5*inner(tau0, zeta)*dx \
+
+        elif (self.constitutive_equation == 'Giesekus'):
+
+            if (self.stability == 'DEVSSG-DG'):
+
+                pass
+
+            elif (self.stability == None):
+
+                F = (1/self.dt)*inner(tau-tau0,zeta)*dx \
+                + (inner(dot(u0,nabla_grad(tau0)) \
+                - dot(tau0, trans(grad(u0))) \
+                - dot(grad(u0), tau0),zeta)*dx \
+                + (1/Wi)*inner((tau0-self.Id) \
+                + alpha*(tau0-self.Id)*(tau0-self.Id), zeta)*dx) \
+                + inner(poly_flux(u0,self.facet_normal,tau0)('+') - poly_flux(u0,self.facet_normal,tau0)('-'),jump(zeta))*dS
+
+        self.a_ce = lhs(F)
+        self.m_ce = rhs(F)
+
+        self.A_ce = PETScMatrix()
+        self.M_ce = PETScVector()
 
     """Construct weak form for navier stokes equations (IPCS scheme)"""
     def ns_form(self, rho, rho0, mu, u, u0, u_, 
-                p, p0, p_, phi, v, q, phig, phic,
-                tau0, eta_s, eta_p):
+                p, p0, p_, phi, v, q, tau0, eta_s):
 
         if (self.method == 'NCons'):
 
@@ -116,8 +140,6 @@ class Flow():
             curv_term = Constant(self.sigma)*mgrad(phi)*inner((self.Id \
                        - outer(self.phin, self.phin)), epsilon(v))*dx
             
-                        # - Constant(self.sigma)*inner(phig*phic,v)*dx
-
         if (self.fluid != 'Viscoelastic'):
 
             ns1 = (1/self.dt)*inner(rho*u - rho0*u0, v)*dx \
@@ -128,12 +150,18 @@ class Flow():
 
         elif (self.fluid == 'Viscoelastic'):
 
-            ns1 = (1/self.dt)*inner(rho*u - rho0*u0, v)*dx \
-                + inner(dot(rho*u0, nabla_grad(u)), v)*dx \
-                + inner(eta_s*grad(u), grad(v))*dx \
-                + (eta_p/self.lamb1)*inner(tau0-self.Id, grad(v))*dx \
-                - p0*div(v)*dx \
-                + inner(rho*self.g,v)*dx \
+            if (self.constitutive_equation == 'OB'):
+
+                ns1 = (1/self.dt)*inner(rho*u - rho0*u0, v)*dx \
+                    + inner(dot(rho*u0, nabla_grad(u)), v)*dx \
+                    + inner(eta_s*grad(u), grad(v))*dx \
+                    + inner(tau0, grad(v))*dx \
+                    - p0*div(v)*dx \
+                    + inner(rho*self.g,v)*dx \
+
+            elif (self.constitutive_equation == 'Giesekus'):
+
+                pass
 
         ns2 = (1/rho)*(dot(grad(p),grad(q)) \
             - dot(grad(p0),grad(q)))*dx \
@@ -234,23 +262,15 @@ class Flow():
         phi.assign(phi_rein)
 
     """Solve the Oldroyd-b equation."""
-    def oldroydb_solve(self):
+    def constitutive_equation_solve(self):
 
-        assemble(self.a_ob, tensor = self.A_ob)
-        assemble(self.m_ob, tensor = self.M_ob)
+        assemble(self.a_ce, tensor = self.A_ce)
+        assemble(self.m_ce, tensor = self.M_ce)
 
-        solve(self.A_ob, self.tau.vector(), self.M_ob, self.oldroyd_b_linear_solver, self.oldroyd_b_preconditioner)
+        solve(self.A_ce, self.tau.vector(), self.M_ce, self.constitutive_equation_linear_solver, self.constitutive_equation_preconditioner)
 
     """Solve the navier stokes equations"""
-    def ns_solve(self, bc_ns, u_, p_, phig, phic, psig, psic, phi):
-
-        # F_grad = inner((phig-grad(phi)),psig)*dx
-
-        # solve(F_grad == 0, phig)
-
-        # F_curv = inner(phic,psic)*dx - inner(phig/(sqrt(phig[0]**2+phig[1]**2)),grad(psic))*dx + inner(grad(phic),grad(psic))*dx
-
-        # solve(F_curv == 0, phic)
+    def ns_solve(self, bc_ns, u_, p_):
 
         assemble(self.a_ns1, tensor = self.A_ns1)
         assemble(self.m_ns1, tensor = self.M_ns1)
