@@ -82,42 +82,27 @@ class Flow():
         self.F_clsr = F
 
     """Construct the weak form for the Oldroyd-B viscoelastic constitutive equation."""
-    def constitutive_equation_form(self, tau, tau0, zeta, u0, lamb1, eta_p, Wi, alpha):
+    def constitutive_equation_form(self, tau, tau0, zeta, u0):
 
         if (self.constitutive_equation == 'OB'):
 
-            if (self.stability == 'DEVSSG-DG'):
+            F = inner(tau, zeta)*dx \
 
-                pass
+            if (self.dimensional == 'Dim'):
 
-            elif (self.stability == None):
+                F += (1/self.dt)*inner(self.lamb*(tau-tau0),zeta)*dx \
+                  + inner(dot(self.lamb*u0,nabla_grad(tau)) \
+                  - dot(self.lamb*tau, trans(grad(u0))) \
+                  - dot(self.lamb*grad(u0), tau),zeta)*dx \
+                  - self.eta_p*inner(grad(u0)+grad(u0).T,zeta)*dx
 
-                F = lamb1*((1/self.dt)*inner(tau-tau0,zeta)*dx \
-                + 0.5*(inner(dot(u0,nabla_grad(tau)) \
-                - dot(tau, trans(grad(u0))) \
-                - dot(grad(u0), tau),zeta)*dx) \
-                + 0.5*(inner(dot(u0,nabla_grad(tau0)) \
-                - dot(tau0, trans(grad(u0))) \
-                - dot(grad(u0), tau0),zeta)*dx)) \
-                + (eta_p)*inner(grad(u0)+grad(u0).T,zeta)*dx \
-                + 0.5*inner(tau, zeta)*dx \
-                + 0.5*inner(tau0, zeta)*dx \
+            elif (self.dimensional == 'NonDim'):
 
-        elif (self.constitutive_equation == 'Giesekus'):
-
-            if (self.stability == 'DEVSSG-DG'):
-
-                pass
-
-            elif (self.stability == None):
-
-                F = (1/self.dt)*inner(tau-tau0,zeta)*dx \
-                + (inner(dot(u0,nabla_grad(tau0)) \
-                - dot(tau0, trans(grad(u0))) \
-                - dot(grad(u0), tau0),zeta)*dx \
-                + (1/Wi)*inner((tau0-self.Id) \
-                + alpha*(tau0-self.Id)*(tau0-self.Id), zeta)*dx) \
-                + inner(poly_flux(u0,self.facet_normal,tau0)('+') - poly_flux(u0,self.facet_normal,tau0)('-'),jump(zeta))*dS
+                F += (1/self.dt)*inner(self.Wi*(tau-tau0),zeta)*dx \
+                  + inner(dot(self.Wi*u0,nabla_grad(tau)) \
+                  - dot(self.Wi*tau, trans(grad(u0))) \
+                  - dot(self.Wi*grad(u0), tau),zeta)*dx \
+                  - (1-self.beta)*inner(grad(u0)+grad(u0).T,zeta)*dx
 
         self.a_ce = lhs(F)
         self.m_ce = rhs(F)
@@ -126,49 +111,59 @@ class Flow():
         self.M_ce = PETScVector()
 
     """Construct weak form for navier stokes equations (IPCS scheme)"""
-    def ns_form(self, rho, rho0, mu, u, u0, u_, 
-                p, p0, p_, phi, v, q, tau0, eta_s):
+    def ns_form(self, u, u0, u_, p, p0, p_, phi, v, q, tau0):
 
         if (self.method == 'NCons'):
 
-            curv_term  = Constant(self.sigma)*mgrad(phi)*inner((self.Id \
+            curv_term  = self.curvature*mgrad(phi)*inner((self.Id \
                        - outer(ngamma(phi), ngamma(phi))), epsilon(v)) \
                        * delta_func(phi,self.eps)*dx
 
         elif (self.method == 'Cons'):
 
-            curv_term = Constant(self.sigma)*mgrad(phi)*inner((self.Id \
+            curv_term = self.curvature*mgrad(phi)*inner((self.Id \
                        - outer(self.phin, self.phin)), epsilon(v))*dx
             
-        if (self.fluid != 'Viscoelastic'):
+        if (self.fluid == 'Newtonian' or self.fluid == 'GNF'):
 
-            ns1 = (1/self.dt)*inner(rho*u - rho0*u0, v)*dx \
-                + inner(dot(rho*u0, nabla_grad(u)), v)*dx \
-                + Constant(2.0)*inner(mu*epsilon(u), epsilon(v))*dx \
+            ns1 = (1/self.dt)*inner(self.rho*u - self.rho0*u0, v)*dx \
+                + inner(dot(self.rho*u0, nabla_grad(u)), v)*dx \
+                + Constant(2.0)*inner(self.mu*epsilon(u), epsilon(v))*dx \
                 - p0*div(v)*dx \
-                + inner(rho*self.g,v)*dx \
+                + inner(self.rho*self.g,v)*dx \
 
         elif (self.fluid == 'Viscoelastic'):
 
-            if (self.constitutive_equation == 'OB'):
+            if (self.dimensional == 'Dim'):
 
-                ns1 = (1/self.dt)*inner(rho*u - rho0*u0, v)*dx \
-                    + inner(dot(rho*u0, nabla_grad(u)), v)*dx \
-                    + inner(eta_s*grad(u), grad(v))*dx \
-                    + inner(tau0, grad(v))*dx \
+                ns1 = (1/self.dt)*inner(self.rho*u - self.rho0*u0, v)*dx \
+                    + inner(dot(self.rho*u0, nabla_grad(u)), v)*dx \
+                    + self.eta_s*inner(grad(u), grad(v))*dx \
                     - p0*div(v)*dx \
-                    + inner(rho*self.g,v)*dx \
+                    + inner(self.rho*self.g,v)*dx \
 
-            elif (self.constitutive_equation == 'Giesekus'):
+                if (self.constitutive_equation == 'OB'):
 
-                pass
+                    ns1 += inner(tau0, grad(v))*dx \
 
-        ns2 = (1/rho)*(dot(grad(p),grad(q)) \
+            elif (self.dimensional == 'NonDim'):
+
+                ns1 = (1/self.dt)*inner(self.rho*u - self.rho0*u0, v)*dx \
+                    + inner(dot(self.rho*u0, nabla_grad(u)), v)*dx \
+                    + (self.beta/self.Re)*inner(grad(u), grad(v))*dx \
+                    - p0*div(v)*dx \
+                    + inner(self.rho*self.g,v)*dx \
+
+                if (self.constitutive_equation == 'OB'):
+
+                    ns1 += (1/self.Re2)*inner(tau0, grad(v))*dx \
+
+        ns2 = (1/self.rho)*(dot(grad(p),grad(q)) \
             - dot(grad(p0),grad(q)))*dx \
             + (1/self.dt)*div(u_)*q*dx \
 
         ns3 = inner(u,v)*dx - inner(u_,v)*dx \
-            + (self.dt/rho)*inner(grad(p_-p0),v)*dx
+            + (self.dt/self.rho)*inner(grad(p_-p0),v)*dx
 
         ns1 += curv_term
 
@@ -290,3 +285,55 @@ class Flow():
         assemble(self.m_ns3, tensor = self.M_ns3)
 
         solve(self.A_ns3, u_.vector(), self.M_ns3, self.ns_linear_solver, self.ns_preconditioner)
+
+    # if (self.constitutive_equation == 'OB-Conf'):
+
+    #     F = (1/self.dt)*inner(tau-tau0,zeta)*dx \
+    #       + inner(dot(u0,nabla_grad(tau)) \
+    #       - dot(tau, trans(grad(u0))) \
+    #       - dot(grad(u0), tau),zeta)*dx \
+
+    #     if (self.dimensional == 'Dim'):
+
+    #         F += (1/self.lamb)*inner(tau - self.Id, zeta)*dx
+
+        # elif (self.dimensional == 'NonDim'):
+
+        #     F += (1/self.Wi)*inner(tau - self.Id, zeta)*dx
+
+    # if (self.constitutive_equation == 'Gie'):
+
+    #     if (self.dimensional == 'Dim'):
+
+    #         pass
+
+    #     elif (self.dimensional == 'NonDim'):
+
+    #         pass
+
+    # if (self.constitutive_equation == 'Gie-Conf'):
+
+    #     if (self.dimensional == 'Dim'):
+
+    #         pass
+
+    #     elif (self.dimensional == 'NonDim'):
+
+    #         pass
+
+    # elif (self.constitutive_equation == 'Giesekus'):
+
+    #     if (self.stability == 'DEVSSG-DG'):
+
+    #         pass
+
+    #     elif (self.stability == None):
+
+    #         F = (1/self.dt)*inner(tau-tau0,zeta)*dx \
+    #         + (inner(dot(u0,nabla_grad(tau0)) \
+    #         - dot(tau0, trans(grad(u0))) \
+    #         - dot(grad(u0), tau0),zeta)*dx \
+    #         + (1/Wi)*inner((tau0-self.Id) \
+    #         + alpha*(tau0-self.Id)*(tau0-self.Id), zeta)*dx) \
+    #         + inner(poly_flux(u0,self.facet_normal,tau0)('+') - poly_flux(u0,self.facet_normal,tau0)('-'),jump(zeta))*dS
+
