@@ -84,7 +84,7 @@ class Flow():
     """Construct the weak form for the Oldroyd-B viscoelastic constitutive equation."""
     def constitutive_equation_form(self, tau, tau0, zeta, u0):
 
-        if (self.constitutive_equation == 'OB'):
+        if (self.constitutive_equation == 'OB') or (self.constitutive_equation == 'Giesekus'):
 
             F = inner(tau, zeta)*dx \
 
@@ -95,6 +95,10 @@ class Flow():
                   - dot(self.lamb*tau, trans(grad(u0))) \
                   - dot(self.lamb*grad(u0), tau),zeta)*dx \
                   - self.eta_p*inner(grad(u0)+grad(u0).T,zeta)*dx
+            
+                if (self.constitutive_equation == 'Giesekus'):
+
+                    F += (self.alpha*self.lamb/self.eta_p)*inner(tau0*tau0,zeta)*dx \
 
             elif (self.dimensional == 'NonDim'):
 
@@ -103,6 +107,10 @@ class Flow():
                   - dot(self.Wi*tau, trans(grad(u0))) \
                   - dot(self.Wi*grad(u0), tau),zeta)*dx \
                   - (1-self.beta)*inner(grad(u0)+grad(u0).T,zeta)*dx
+
+                if (self.constitutive_equation == 'Giesekus'):
+
+                    + (self.alpha*self.Wi/(1-self.beta))*inner(tau0*tau0,zeta)*dx \
 
         self.a_ce = lhs(F)
         self.m_ce = rhs(F)
