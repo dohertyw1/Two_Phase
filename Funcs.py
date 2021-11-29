@@ -89,3 +89,36 @@ def phasify_con(phi, param_in, param_out):
 def phasify_noncon(phi, param_in, param_out, eps):
     
     return param_out*heaviside(phi, eps) + param_in*(1-heaviside(phi, eps))
+
+def dim_to_nondim(fluid, 
+                  length_dim,
+                  height_dim,
+                  grav,
+                  surf_tens,
+                  T_dim,
+                  dt_dim,
+                  size):
+
+    mesh_nondim = RectangleMesh(Point(0,0),Point(length_dim, height_dim),size,2*size) 
+
+    if (fluid == 'Newtonian'):
+        
+        rho_in = 
+        rho_out = 
+        Re = 
+        Fr = 
+        We = 
+
+    if (fluid == 'Viscoelastic'):
+
+        pass
+
+    Re = 
+
+
+
+    return pass
+
+def nondim_to_dim():
+
+    return 

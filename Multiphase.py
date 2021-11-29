@@ -6,8 +6,9 @@ import os
 from mpi4py import MPI
 from Flow import *
 from Funcs import *
+from Process import *
 
-class Multiphase(Flow):
+class Multiphase (Flow, Process):
 
     """"Initialise material parameters, mesh and test case data"""
     def __init__(self, test_case, method, fluid, constitutive_equation, dimensional, stability, ls_scheme, lsr_method,
@@ -45,7 +46,6 @@ class Multiphase(Flow):
         self.pli_out = 2
 
         self.T = 3
-        self.dt = (1/self.size)/2
         self.num_steps = int(self.T/self.dt)
         
         self.rein_div = 1
@@ -53,6 +53,7 @@ class Multiphase(Flow):
 
         self.comm = MPI.comm_world
         self.rank = MPI.rank(self.comm)
+        self.Id = Identity(int(self.dimension[0]))
 
         self.facet_normal = FacetNormal(self.mesh)
 
@@ -75,6 +76,7 @@ class Multiphase(Flow):
             self.dtau = Constant(0.50*self.hmin**(1+self.d)) 
             self.centre = [0.5, 0.5]
             self.radius = 0.25
+            self.dt = (1/self.size)/2
 
         elif (self.test_case == 2):
             
@@ -90,6 +92,7 @@ class Multiphase(Flow):
             self.dtau = Constant(0.50*self.hmin**(1+self.d)) 
             self.centre = [0.5, 0.5]
             self.radius = 0.25
+            self.dt = (1/self.size)/2
 
         if (self.fluid == 'Viscoelastic'):
 
@@ -102,6 +105,7 @@ class Multiphase(Flow):
             self.rho1 = [0.1, "Inside"]
             self.rho2 = [1, "Outside"]
             self.sigma = 10
+            self.alpha = 0.1
 
             self.beta1 = 1
             self.beta2 = 0.07 
@@ -122,7 +126,8 @@ class Multiphase(Flow):
                 self.centre = [1, 1]
                 self.radius = 0.3
                 self.eps = 0.02
-
+                self.curvature = Constant(self.sigma)
+                
                 self.T = 0.13
                 self.dt = 0.001
                 self.num_steps = int(self.T/self.dt)
@@ -136,26 +141,11 @@ class Multiphase(Flow):
                 self.centre = [1/0.6, 1/0.6]
                 self.radius = 0.3/0.6
                 self.eps = 0.0333333
+                self.curvature = Constant(1/self.Eo)
 
-                self.T = 0.13*(np.sqrt(980*0.6))/0.6 
+                self.T = 0.3*(np.sqrt(980*0.6))/0.6 
                 self.dt = (0.001*(np.sqrt(980*0.6))/0.6)
                 self.num_steps = int(self.T/self.dt)
-
-        if (self.dimension == '2D'):
-
-            self.Id = Identity(2)
-
-        elif (self.dimension == '3D'):
-
-            self.Id = Identity(3) 
-
-        if (self.dimensional == 'Dim'):
-
-            self.curvature = Constant(self.sigma)
-
-        elif (self.dimensional == 'NonDim'):
-
-            self.curvature = Constant(1/self.Eo)
 
     """"Define signed distance function (ncls and cls) and heaviside function (cls)"""
     def level_set(self):
@@ -299,7 +289,7 @@ class Multiphase(Flow):
             
             elif (self.fluid == 'Viscoelastic'):
 
-                if (self.constitutive_equation == 'OB') and (self.dimensional == 'Dim'):
+                if (self.constitutive_equation == 'OB' or self.constitutive_equation == 'Giesekus') and (self.dimensional == 'Dim'):
 
                     self.eta_s = phasify_con(self.phi, self.eta_s_in, self.eta_s_out)
 
@@ -307,7 +297,7 @@ class Multiphase(Flow):
 
                     self.lamb = phasify_con(self.phi, self.lamb_in, self.lamb_out)
 
-                if (self.constitutive_equation == 'OB') and (self.dimensional == 'NonDim'):
+                if (self.constitutive_equation == 'OB' or self.constitutive_equation == 'Giesekus') and (self.dimensional == 'NonDim'):
 
                     self.beta = phasify_con(self.phi, self.beta1, self.beta2)
 
@@ -480,6 +470,8 @@ class Multiphase(Flow):
         
         self.process_shape()
 
+        self.post_process()
+
 
 case1 = Multiphase(test_case = None,
                    method = 'Cons',
@@ -503,13 +495,18 @@ case2 = Multiphase(test_case = 1,
                    stability = None,
                    ls_scheme = 'Euler',
                    lsr_method = 'old_method',
-                   rein_steps = 1,
+                   rein_steps = 3,
                    size = 50,
                    location = 'HAWK',
                    dimension = '2D',
                    ls_order = 2)
 
 case1.run()
+
+# follows
+# follows
+# false
+# for b d
 
 
 """good results were eps: 0.9 dtau: 1.10 size: 200 euler scheme old method order 2"""
@@ -524,3 +521,12 @@ case1.run()
             #                     carreau(self.u0, self.pli_in, self.eta0_in, self.etainf_in, self.lamb_in), 
             #                     carreau(self.u0, self.pli_out, self.eta0_out, self.etainf_out, self.lamb_out))
 
+# if u dot n > 0 => u dot n = abs(u dot n)
+
+# <=> (u dot n) / abs(u dot n) = 1 since abs(u dot n) > 0
+
+# <=> (u / abs(u dot n)) dot n = 1
+
+# => u / abs(u dot n) = n
+
+# => u = abs(u dot n) * n 

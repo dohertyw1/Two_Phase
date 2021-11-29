@@ -7,9 +7,20 @@ import numpy as np
 
 class Process():
 
-    def __init__(self, simulations):
+    def __init__(self):
 
-        self.simulations = simulations
+        pass
+        # self.method = 'Cons'
+        # self.fluid = 'Newtonian'
+
+    def load_data(self, suffix):
+
+        with open(f'{self.method}_{self.fluid}/{self.method}_{self.fluid}_{suffix}.csv', newline='') as csvfile:
+
+            self.raw_data = np.array(list(csv.reader(csvfile, delimiter='\t')))
+
+    def categorise_data(self):
+
         self.timescale = []
         self.area = []
         self.xcom = []
@@ -18,19 +29,11 @@ class Process():
         self.urise = []
         self.vrise = []
 
-    def load_data(self, suffix, method, fluid):
-
-        with open(f'{method}_{fluid}/{method}_{fluid}_{suffix}.csv', newline='') as csvfile:
-
-            self.raw_data = np.array(list(csv.reader(csvfile, delimiter='\t')))
-
-    def categorise_data(self):
-
         variables = [self.timescale, self.area, self.xcom, self.ycom, self.circ, self.urise, self.vrise]
 
         for variable in variables:
 
-            for i in range(np.shape(self.raw_data[0])[0]):
+            for i in range(np.shape(self.raw_data)[0]):
 
                 variable.append(float(self.raw_data[i][variables.index(variable)]))
 
@@ -96,13 +99,13 @@ class Process():
 
                 variable.append(float(raw_MooNMD[self.MooNMD.index(variable)][0][i]))
 
-    def load_bubble_shape(self, method, fluid, mesh_saved):
+    def load_bubble_shape(self, mesh_saved):
 
         if (mesh_saved):
 
             mesh = Mesh()
 
-            with XDMFFile(f'{method}_{fluid}/phi_read.xdmf') as infile:
+            with XDMFFile(f'{self.method}_{self.fluid}/phi_read.xdmf') as infile:
 
                 infile.read(mesh)
 
@@ -113,25 +116,48 @@ class Process():
         V = FunctionSpace(mesh, 'CG', self.ls_order) 
         self.level_set = Function(V)
 
-        with XDMFFile(f'{method}_{fluid}/phi_read.xdmf') as infile:
+        with XDMFFile(f'{self.method}_{self.fluid}/phi_read.xdmf') as infile:
 
             infile.read_checkpoint(self.level_set, "phi")
 
     def individual_plotter(self, variable):
 
-        plt.figure(num=None, figsize=(10, 10), dpi=100, facecolor='w', edgecolor='k')
-        plt.plot(self.timescale, variable, color='black')
-        plt.plot(self.MooNMD_timescale, self.MooNMD_circ,color='red',linestyle=':')
-        plt.plot(self.FreeLIFE_timescale,self.FreeLIFE_circ,color='blue',linestyle='-.')
-        plt.xlim([0,3])
-        plt.ylim([0.8,1.1])
+        if (variable == 'Area'):
+
+            current_var = self.area
+            MooNMD_var = self.MooNMD_area
+            FreeLIFE_var = self.FreeLIFE_area
+
+        elif (variable == 'Circularity'):
+
+            current_var = self.circ
+            MooNMD_var = self.MooNMD_circ
+            FreeLIFE_var = self.FreeLIFE_circ
+
+        elif (variable == 'Centre of mass'):
+
+            current_var = self.ycom
+            MooNMD_var = self.MooNMD_ycom
+            FreeLIFE_var = self.FreeLIFE_ycom
+
+        elif (variable == 'Rise Velocity'):
+
+            current_var = self.vrise
+            MooNMD_var = self.MooNMD_vrise
+            FreeLIFE_var = self.FreeLIFE_vrise
+
+        plt.plot(self.timescale, current_var, color='black')
+        # plt.plot(self.MooNMD_timescale, MooNMD_var,color='red',linestyle=':')
+        # plt.plot(self.FreeLIFE_timescale,FreeLIFE_var,color='blue',linestyle='-.')
+        # plt.xlim([0,3])
         plt.grid()
-        plt.title('Degree of circularity')
+        plt.title(f'{variable}')
         plt.legend(['Current study', 'MooNMD Benchmark','FreeLIFE Benchmark'])
+        plt.tight_layout()
 
-    def run(self):
+    def post_process(self):
 
-        self.load_data('data', 'Cons', 'Newtonian')
+        self.load_data('data')
 
         self.categorise_data()
 
@@ -139,63 +165,21 @@ class Process():
 
         # self.load_bubble_shape('Cons', 'Newtonian')
 
-        self.individual_plotter(self.circ)
+        if (self.rank == 0):
 
-case = Process(1)
-case.run()
+            plt.figure(num=None, figsize=(10, 10), dpi=100, facecolor='w', edgecolor='k')
 
+            plt.subplot(221)
+            self.individual_plotter('Area')
+            plt.subplot(222)
+            self.individual_plotter('Circularity')
+            plt.subplot(223)
+            self.individual_plotter('Centre of mass')
+            plt.subplot(224)
+            self.individual_plotter('Rise Velocity')
+            plt.suptitle(f'{self.method}_{self.fluid}')
+            plt.savefig('test')
+            plt.show()
 
-
-#
-# plt.subplot(221)
-# # plt.plot(timescale1601, ycom1601,color='black')
-# # # plt.plot(timescale1602, ycom1602,color='black')
-# # plt.plot(fMooNMD_timescale,fMooNMD_ycom,color='red',linestyle=':')
-# # plt.plot(fFreeLIFE_timescale,fFreeLIFE_ycom,color='blue',linestyle='-.')
-
-# plt.scatter(fFreeLIFE_shapex,fFreeLIFE_shapey, s=1, color='blue')
-# # plt.scatter(fMooNMD_shapex,fMooNMD_shapey, s=1, color='red')
-# plot(phi2, mode='contour', levels=[0.5],color='blue')
-# # # plot(phi2i, mode='contour', levels=[0],color='green'    )
-# # plt.legend(['MooNMD Benchmark','FreeLIFE Benchmark'])
-
-# # plt.xlim([0.1,0.9])
-# # plt.ylim([0.9, 1.3])
-# plt.grid()
-# plt.title('Bubble shape')
-# plt.legend(['MooNMD Benchmark','FreeLIFE Benchmark'])
-
-# plt.subplot(222)
-# plt.plot(timescale1602, area1602,color='green')
-# plt.plot(timescale1601, area1601,color='black')
-# plt.plot(fMooNMD_timescale,fMooNMD_area,color='red',linestyle=':')
-# plt.plot(fFreeLIFE_timescale,fFreeLIFE_area,color='blue',linestyle='-.')
-# # plt.xlim([0,5.25])
-# plt.grid()
-# plt.title('Area')
-# plt.legend(['100 CELLS O1','500 CELLS O2','MooNMD Benchmark','FreeLIFE Benchmark'])
-
-# plt.subplot(223) 
-# plt.plot(timescale1602, circ1602,color='green')
-# plt.plot(timescale1601, circ1601,color='black')
-# plt.plot(fMooNMD_timescale,fMooNMD_circ,color='red',linestyle=':')
-# plt.plot(fFreeLIFE_timescale,fFreeLIFE_circ,color='blue',linestyle='-.')
-# # plt.xlim([0,3])
-# # plt.ylim([0.8,1.1])
-# plt.grid()
-# plt.title('Degree of circularity')
-# plt.legend(['100 CELLS O1','500 CELLS O2','MooNMD Benchmark','FreeLIFE Benchmark'])
-
-# plt.subplot(224)
-# plt.plot(timescale1602, vrise1602,color='green')
-# plt.plot(timescale1601, vrise1601,color='black')
-# plt.plot(fMooNMD_timescale,fMooNMD_vrise,color='red',linestyle=':')
-# plt.plot(fFreeLIFE_timescale,fFreeLIFE_vrise,color='blue',linestyle='-.')
-# # plt.xlim([0,3])
-# plt.grid()
-# plt.title('Y-rise velocity')
-# plt.legend(['100 CELLS O1','500 CELLS O2','MooNMD Benchmark','FreeLIFE Benchmark'])
-# # plt.suptitle('TEST CASE 1 CONSERVATIVE LEVEL SET')
-# plt.tight_layout()
-# # plt.savefig('CONcase1.png')
-# plt.show()
+# case = Process()
+# case.post_process()
