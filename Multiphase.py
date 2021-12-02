@@ -7,12 +7,13 @@ from mpi4py import MPI
 from Flow import *
 from Funcs import *
 from Process import *
+from ParameterHandler import *
 
-class Multiphase (Flow, Process):
+class Multiphase(Flow, Process, ParameterHandler):
 
     """"Initialise material parameters, mesh and test case data"""
-    def __init__(self, test_case, method, fluid, constitutive_equation, dimensional, stability, ls_scheme, lsr_method,
-                 rein_steps, size, location, dimension, ls_order):
+    def __init__(self, test_case, method, fluid, constitutive_equation, dimensional, stability, 
+                 ls_scheme, lsr_method, rein_steps,location, dimension, ls_order, element):
 
         super().__init__()
 
@@ -23,140 +24,140 @@ class Multiphase (Flow, Process):
         self.dimensional = dimensional
         self.stability = stability
         self.ls_scheme = ls_scheme
+        self.rein_steps = rein_steps
         self.lsr_method = lsr_method
-        self.size = size
         self.location = location
         self.dimension = dimension
         self.ls_order = ls_order
+        self.element = element
 
-        if (dimension == '2D'):
-
-            self.mesh = RectangleMesh(Point(0,0),Point(1,2),self.size,2*self.size) 
-            self.g = Constant((0,0.98))
-
-        elif (dimension == '3D'):
-
-            self.mesh = BoxMesh(Point(0,0,0), Point(1,2,1), self.size, 2*self.size, self.size)
-            self.g = Constant((0,0.98,0))
-        
-        self.amin = RectangleMesh(Point(0,0),Point(1,2),300,600).hmin()
-        self.hmin = self.mesh.hmin()
-
-        self.pli_in = None
-        self.pli_out = 2
-
-        self.T = 3
-        self.num_steps = int(self.T/self.dt)
-        
         self.rein_div = 1
-        self.rein_steps = rein_steps
-
         self.comm = MPI.comm_world
         self.rank = MPI.rank(self.comm)
         self.Id = Identity(int(self.dimension[0]))
+                   
+        # if (self.test_case == 1):
 
-        self.facet_normal = FacetNormal(self.mesh)
+        #     self.height = 2
+        #     self.length = 1
+        #     self.mu1 = [1, "Inside"]
+        #     self.rho1 = [100, "Inside"]
+        #     self.mu2 = [10, "Outside"]
+        #     self.rho2 = [1000, "Outside"]
+        #     self.sigma = 24.5
+        #     self.centre = [0.5, 0.5]
+        #     self.radius = 0.25
+            
+        # elif (self.test_case == 2):
+            
+        #     self.height = 2
+        #     self.length = 1
+        #     self.mu1 = [0.1, "Inside"]
+        #     self.rho1 = [1, "Inside"]
+        #     self.mu2 = [10, "Outside"]
+        #     self.rho2 = [1000, "Outside"]
+        #     self.sigma = 1.96
+        #     self.centre = [0.5, 0.5]
+        #     self.radius = 0.25
+        #     self.dt = (1/self.size)/2
+
+        # if (self.fluid == 'Viscoelastic'):
+
+        #     self.eta_s_in = 1.025
+        #     self.eta_p_in = 0
+        #     self.eta_s_out = 0.7175
+        #     self.eta_p_out = 9.5325
+        #     self.lamb_in = 0
+        #     self.lamb_out = 0.2
+        #     self.rho1 = [0.1, "Inside"]
+        #     self.rho2 = [1, "Outside"]
+        #     self.sigma = 10
+        #     self.alpha = 0.1
+
+        #     self.beta1 = 1
+        #     self.beta2 = 0.07 
+        #     self.Re2 = 1.419436759
+        #     self.Re_eps = 10
+        #     self.Wi1 = 0
+        #     self.Wi2 = 8.082903769
+        #     self.Eo = 35.28
+
+        #     if (self.dimensional == 'Dim'):
+                
+        #         self.height = 4
+        #         self.length = 2
+        #         self.mesh = RectangleMesh(Point(0,0),Point(self.length,self.height),self.size,2*self.size) 
+        #         self.g = Constant((0,980))
+        #         self.centre = [1, 1]
+        #         self.radius = 0.3
+        #         self.eps = 0.02
+        #         self.curvature = Constant(self.sigma)
+                
+        #         self.T = 0.13
+        #         self.dt = 0.001
+        #         self.num_steps = int(self.T/self.dt)
+
+        #     if (self.dimensional == 'NonDim'):
+
+        #         self.height = 6.666
+        #         self.length = 3.333
+        #         self.mesh = RectangleMesh(Point(0,0),Point(self.length,self.height),self.size,2*self.size) 
+        #         self.g = Constant((0,1))
+        #         self.centre = [1/0.6, 1/0.6]
+        #         self.radius = 0.3/0.6
+        #         self.eps = 0.0333333
+        #         self.curvature = Constant(1/self.Eo)
+
+        #         self.T = 0.3*(np.sqrt(980*0.6))/0.6 
+        #         self.dt = (0.001*(np.sqrt(980*0.6))/0.6)
+        #         self.num_steps = int(self.T/self.dt)
+
+    """Construct the mesh for the problem."""
+    def mesh_constructor(self):
+
+        if (self.dimension == '2D'):
+
+            self.mesh = RectangleMesh(Point(self.cox1,self.coy1),Point(self.cox2,self.coy2),self.sizex,self.sizey) 
+
+        # elif (self.dimension == '3D'):
+
+        #     self.mesh = BoxMesh(Point(0,0,0), Point(1,2,1), self.sizex, self.sizey, self.sizex)
+        #     
+        self.fn = FacetNormal(self.mesh)
+        self.hmin = self.mesh.hmin()
+
+    """"Define signed distance function (ncls and cls) and heaviside function (cls)"""
+    def level_set(self):
 
         if (self.method == 'NCons'):
 
             self.alph = Constant(0.0625*self.hmin)
             self.eps1 = Constant(self.hmin)
+            self.eps = Constant(1.50*self.hmin) 
+            self.dtau = Constant(0.10*self.hmin) 
+        
+        elif (self.method == 'Cons'):
 
-        if (self.test_case == 1):
-
-            self.height = 2
-            self.length = 1
-            self.mu1 = [1, "Inside"]
-            self.rho1 = [100, "Inside"]
-            self.mu2 = [10, "Outside"]
-            self.rho2 = [1000, "Outside"]
-            self.sigma = 24.5
             self.d = 0.10
-            self.eps = 0.01 #Constant(0.50*self.hmin**(1-self.d)) 
             self.dtau = Constant(0.50*self.hmin**(1+self.d)) 
-            self.centre = [0.5, 0.5]
-            self.radius = 0.25
-            self.dt = (1/self.size)/2
 
-        elif (self.test_case == 2):
+            if (self.sizex == 50):
+
+                self.eps = 0.005
             
-            self.height = 2
-            self.length = 1
-            self.mu1 = [0.1, "Inside"]
-            self.rho1 = [1, "Inside"]
-            self.mu2 = [10, "Outside"]
-            self.rho2 = [1000, "Outside"]
-            self.sigma = 1.96
-            self.d = 0.10
-            self.eps = Constant(0.50*self.hmin**(1-self.d)) 
-            self.dtau = Constant(0.50*self.hmin**(1+self.d)) 
-            self.centre = [0.5, 0.5]
-            self.radius = 0.25
-            self.dt = (1/self.size)/2
+            else:
 
-        if (self.fluid == 'Viscoelastic'):
-
-            self.eta_s_in = 1.025
-            self.eta_p_in = 0
-            self.eta_s_out = 0.7175
-            self.eta_p_out = 9.5325
-            self.lamb_in = 0
-            self.lamb_out = 0.2
-            self.rho1 = [0.1, "Inside"]
-            self.rho2 = [1, "Outside"]
-            self.sigma = 10
-            self.alpha = 0.1
-
-            self.beta1 = 1
-            self.beta2 = 0.07 
-            self.Re2 = 1.419436759
-            self.Re_eps = 10
-            self.Wi1 = 0
-            self.Wi2 = 8.082903769
-            self.Eo = 35.28
-
-            self.dtau = Constant(0.5*self.hmin**1.10)
-
-            if (self.dimensional == 'Dim'):
-                
-                self.height = 4
-                self.length = 2
-                self.mesh = RectangleMesh(Point(0,0),Point(self.length,self.height),self.size,2*self.size) 
-                self.g = Constant((0,980))
-                self.centre = [1, 1]
-                self.radius = 0.3
-                self.eps = 0.02
-                self.curvature = Constant(self.sigma)
-                
-                self.T = 0.13
-                self.dt = 0.001
-                self.num_steps = int(self.T/self.dt)
-
-            if (self.dimensional == 'NonDim'):
-
-                self.height = 6.666
-                self.length = 3.333
-                self.mesh = RectangleMesh(Point(0,0),Point(self.length,self.height),self.size,2*self.size) 
-                self.g = Constant((0,1))
-                self.centre = [1/0.6, 1/0.6]
-                self.radius = 0.3/0.6
-                self.eps = 0.0333333
-                self.curvature = Constant(1/self.Eo)
-
-                self.T = 0.3*(np.sqrt(980*0.6))/0.6 
-                self.dt = (0.001*(np.sqrt(980*0.6))/0.6)
-                self.num_steps = int(self.T/self.dt)
-
-    """"Define signed distance function (ncls and cls) and heaviside function (cls)"""
-    def level_set(self):
+                self.eps = Constant(0.50*self.hmin**(1-self.d))
 
         if (self.dimension == '2D'):
 
-            self.sdf = Expression('sqrt((pow((x[0]-A),2))+(pow((x[1]-B),2)))-r', degree=2, A=self.centre[0], B=self.centre[1], r=self.radius)
+            self.sdf = Expression('sqrt((pow((x[0]-A),2))+(pow((x[1]-B),2)))-r', degree=2, A=self.centrex, B=self.centrey, r=self.radius)
+            self.g = Constant((0,self.grav))
+            
+        # elif (self.dimension == '3D'):
 
-        elif (self.dimension == '3D'):
-
-            self.sdf = Expression('sqrt((pow((x[0]-A),2))+(pow((x[1]-B),2))+(pow((x[2]-C),2)))-r', degree=2, A=0.5, B=0.5, C=0.5, r=0.25)
+        #     self.sdf = Expression('sqrt((pow((x[0]-A),2))+(pow((x[1]-B),2))+(pow((x[2]-C),2)))-r', degree=2, A=0.5, B=0.5, C=0.5, r=0.25)
+        #     self.g = Constant((0,self.grav,0))
 
         if (self.method == 'Cons'):
 
@@ -166,7 +167,7 @@ class Multiphase (Flow, Process):
     def fem_data(self):
         
         """ Level Set spaces/functions """
-        self.Q = FunctionSpace(self.mesh, 'CG', self.ls_order)
+        self.Q = FunctionSpace(self.mesh, self.element, self.ls_order)
         self.Vnorm = VectorFunctionSpace(self.mesh, 'CG', 1)
 
         self.phi = TrialFunction(self.Q)
@@ -241,8 +242,8 @@ class Multiphase (Flow, Process):
         
         self.bcs = []
 
-        walls   = f'near(x[1], 0) || near(x[1], {self.height})'
-        fswalls = f'near(x[0], 0) || near(x[0], {self.length})'
+        walls   = f'near(x[1], {self.coy1}) || near(x[1], {self.coy2})'
+        fswalls = f'near(x[0], {self.cox1}) || near(x[0], {self.cox2})'
 
         fswalls_x = 'near(x[0], 0) || near(x[0], 1)'
         fswalls_z = 'near(x[2], 0) || near(x[2], 1)'
@@ -267,12 +268,12 @@ class Multiphase (Flow, Process):
 
         if (self.method == 'NCons'):
 
-            self.rho = phasify_noncon(self.phi, self.rho1[0], self.rho2[0], self.eps)
-            self.rho0 = phasify_noncon(self.phi00, self.rho1[0], self.rho2[0], self.eps)
+            self.rho = phasify_noncon(self.phi, self.rho1, self.rho2, self.eps)
+            self.rho0 = phasify_noncon(self.phi00, self.rho1, self.rho2, self.eps)
 
             if (self.fluid == 'Newtonian'):
 
-                self.mu = phasify_noncon(self.phi, self.mu1[0], self.mu2[0], self.eps)
+                self.mu = phasify_noncon(self.phi, self.mu1, self.mu2, self.eps)
 
             elif (self.fluid == 'Viscoelastic'):
 
@@ -280,12 +281,12 @@ class Multiphase (Flow, Process):
 
         elif (self.method == 'Cons'):
 
-            self.rho = phasify_con(self.phi, self.rho1[0], self.rho2[0])
-            self.rho0 = phasify_con(self.phi00, self.rho1[0], self.rho2[0])
+            self.rho = phasify_con(self.phi, self.rho1, self.rho2)
+            self.rho0 = phasify_con(self.phi00, self.rho1, self.rho2)
 
             if (self.fluid == 'Newtonian'):
 
-                self.mu = phasify_con(self.phi, self.mu1[0], self.mu2[0])
+                self.mu = phasify_con(self.phi, self.mu1, self.mu2)
             
             elif (self.fluid == 'Viscoelastic'):
 
@@ -348,7 +349,7 @@ class Multiphase (Flow, Process):
         self.timeseries = [self.t, area, x_com, y_com, circ, u_rise, v_rise]
 
         if self.rank == 0:
-            with open((f"{self.method}_{self.fluid}/{self.method}_{self.fluid}_data.csv"), 'a') as csvfile:
+            with open((f"{self.method}_{self.fluid}_{self.element}/{self.method}_{self.fluid}_{self.element}_data.csv"), 'a') as csvfile:
                 f = csv.writer(csvfile, delimiter='\t',lineterminator='\n',)
                 f.writerow(self.timeseries)
 
@@ -357,31 +358,31 @@ class Multiphase (Flow, Process):
 
         if (self.method == 'NCons'):
 
-            with XDMFFile(f"{self.method}_{self.fluid}/phi_read.xdmf") as outfile:
+            with XDMFFile(f"{self.method}_{self.fluid}_{self.element}/phi_read.xdmf") as outfile:
 
                 outfile.write_checkpoint(self.phi0, "phi", 0, append=True)
 
         elif (self.method == 'Cons'):
 
-            with XDMFFile(f"{self.method}_{self.fluid}/phi_read.xdmf") as outfile:
+            with XDMFFile(f"{self.method}_{self.fluid}_{self.element}/phi_read.xdmf") as outfile:
 
                 outfile.write_checkpoint(self.phi0, "phi", 0, append=True)
 
     """Set up files to save data and delete old data."""
     def set_up_files(self):
 
-        self.xdmf_file_phi = XDMFFile(f'{self.method}_{self.fluid}/phi.xdmf')
-        self.xdmf_file_u = XDMFFile(f'{self.method}_{self.fluid}/u.xdmf')
-        self.xdmf_file_p = XDMFFile(f'{self.method}_{self.fluid}/p.xdmf')
+        self.xdmf_file_phi = XDMFFile(f'{self.method}_{self.fluid}_{self.element}/phi.xdmf')
+        self.xdmf_file_u = XDMFFile(f'{self.method}_{self.fluid}_{self.element}/u.xdmf')
+        self.xdmf_file_p = XDMFFile(f'{self.method}_{self.fluid}_{self.element}/p.xdmf')
 
         if (self.fluid == 'Viscoelastic'):
 
-            self.xdmf_file_tau = XDMFFile(f'{self.method}_{self.fluid}/tau.xdmf')
+            self.xdmf_file_tau = XDMFFile(f'{self.method}_{self.fluid}_{self.element}/tau.xdmf')
             self.xdmf_file_tau.parameters['flush_output'] = True 
 
-        if (self.rank == 0 and os.path.isfile(f'{self.method}_{self.fluid}/{self.method}_{self.fluid}_data.csv') == True):
+        if (self.rank == 0 and os.path.isfile(f'{self.method}_{self.fluid}_{self.element}/{self.method}_{self.fluid}_{self.element}_data.csv') == True):
 
-            os.remove(f'{self.method}_{self.fluid}/{self.method}_{self.fluid}_data.csv')
+            os.remove(f'{self.method}_{self.fluid}_{self.element}/{self.method}_{self.fluid}_{self.element}_data.csv')
           
         self.xdmf_file_phi.parameters['flush_output'] = True
         self.xdmf_file_u.parameters['flush_output'] = True
@@ -390,17 +391,24 @@ class Multiphase (Flow, Process):
     """Run the solver"""
     def run(self):
 
+        self.begin()
+
+        self.dt = (1/self.sizex)/2
+        self.num_steps = int(self.T/self.dt)
+
         set_log_active(False)
 
+        if (self.element == 'DG'):
+
+            parameters['ghost_mode'] = 'shared_facet' 
+
         self.set_up_files()
-
+        self.mesh_constructor()
         self.level_set()
-
         self.fem_data()
-
         self.bcs()
 
-        self.ls_form(self.phi, self.phi0, self.psi, self.u0)
+        self.ls_form(self.phi, self.phi0, self.psi, self.u0, self.fn)
 
         if (self.method == 'NCons'):
 
@@ -408,7 +416,7 @@ class Multiphase (Flow, Process):
 
         elif (self.method == 'Cons'):
 
-            self.clsr_form(self.phi_rein, self.phi0, self.psi, self.phin)
+            self.clsr_form(self.phi_rein, self.phi0, self.psi, self.phin, self.fn)
 
         self.phi = Function(self.Q)
         
@@ -473,19 +481,20 @@ class Multiphase (Flow, Process):
         self.post_process()
 
 
-case1 = Multiphase(test_case = None,
-                   method = 'Cons',
-                   fluid = 'Viscoelastic',
-                   constitutive_equation = 'OB',
-                   dimensional = 'NonDim',
-                   stability = None,
-                   ls_scheme = 'Euler',
-                   lsr_method = 'old_method',
-                   rein_steps = 1,
-                   size = 50,
-                   location = 'HAWK',
-                   dimension = '2D',
-                   ls_order = 2)
+# case1 = Multiphase(test_case = None,
+#                    method = 'Cons',
+#                    fluid = 'Viscoelastic',
+#                    constitutive_equation = 'OB',
+#                    dimensional = 'NonDim',
+#                    stability = None,
+#                    ls_scheme = 'Euler',
+#                    lsr_method = 'old_method',
+#                    rein_steps = 1,
+#                    size = 50,
+#                    location = 'HAWK',
+#                    dimension = '2D',
+#                    ls_order = 2,
+#                    final_time = 0.13)
 
 case2 = Multiphase(test_case = 1,
                    method = 'Cons',
@@ -495,38 +504,10 @@ case2 = Multiphase(test_case = 1,
                    stability = None,
                    ls_scheme = 'Euler',
                    lsr_method = 'old_method',
-                   rein_steps = 3,
-                   size = 50,
+                   rein_steps = 1,
                    location = 'HAWK',
                    dimension = '2D',
-                   ls_order = 2)
+                   ls_order = 2,
+                   element = 'DG')
 
-case1.run()
-
-# follows
-# follows
-# false
-# for b d
-
-
-"""good results were eps: 0.9 dtau: 1.10 size: 200 euler scheme old method order 2"""
-
-            # elif (self.fluid == 'GNF_PL'):
-
-            #     self.mu = phasify_con(self.phi, self.mu1[0], powerlaw(self.u0, self.pli_out))
-
-            # elif (self.fluid == 'GNF_C'):
-
-            #     self.mu = phasify_con(self.phi, 
-            #                     carreau(self.u0, self.pli_in, self.eta0_in, self.etainf_in, self.lamb_in), 
-            #                     carreau(self.u0, self.pli_out, self.eta0_out, self.etainf_out, self.lamb_out))
-
-# if u dot n > 0 => u dot n = abs(u dot n)
-
-# <=> (u dot n) / abs(u dot n) = 1 since abs(u dot n) > 0
-
-# <=> (u / abs(u dot n)) dot n = 1
-
-# => u / abs(u dot n) = n
-
-# => u = abs(u dot n) * n 
+case2.run()

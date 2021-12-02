@@ -17,13 +17,24 @@ class Flow():
         self.constitutive_equation_preconditioner = 'default'
         
     """Construct weak form for level set equation"""
-    def ls_form(self, phi, phi0, psi, u0):
+    def ls_form(self, phi, phi0, psi, u0, fn):
 
         if (self.ls_scheme == 'Euler'):
 
-            F = (phi/self.dt)*psi*dx \
-              - (phi0/self.dt)*psi*dx \
-              + inner(u0, grad(phi))*psi*dx \
+            if (self.element == 'CG'):
+
+                F = (phi/self.dt)*psi*dx \
+                - (phi0/self.dt)*psi*dx \
+                + inner(u0, grad(phi))*psi*dx \
+
+            elif (self.element == 'DG'):
+
+                un = abs(dot(u0('+'), fn('+')))
+
+                F = (1/self.dt)*(phi-phi0)*psi*dx \
+                  - dot ( grad ( psi ), u0 * phi ) * dx \
+                  + (dot(u0('+'), jump(psi, fn))*avg(phi) \
+                  + 0.5*un*dot(jump(phi, fn), jump(psi, fn)))*dS \
 
         elif (self.ls_scheme == 'CN'):
 
@@ -56,28 +67,49 @@ class Flow():
     def nclsr_form(self, phi_rein, phi0, psi, sign):
 
         F = (phi_rein/self.dtau)*psi*dx - (phi0 /self.dtau)*psi*dx \
-            - sign*(1-sqrt(dot(grad(phi0),grad(phi0))))*psi*dx \
-            + self.alph*inner(grad(phi0),grad(psi))*dx
+          - sign*(1-sqrt(dot(grad(phi0),grad(phi0))))*psi*dx \
+          + self.alph*inner(grad(phi0),grad(psi))*dx
 
         self.F_nclsr = F
 
     """Construct weak form for conservative level set reinitialisation"""
-    def clsr_form(self, phi_rein, phi0, psi, phin):
+    def clsr_form(self, phi_rein, phi0, psi, phin, fn):
 
         F = (phi_rein - phi0)/self.dtau*psi*dx
 
-        if (self.lsr_method == 'old_method'):
+        if (self.element == 'CG'):
 
-            terms = - phi_rein*(1.0 - phi_rein)*inner(grad(psi), phin)*dx \
-                    + self.eps*inner(grad(phi_rein), grad(psi))*dx  
+            if (self.lsr_method == 'old_method'):
 
-        elif (self.lsr_method == 'new_method'):
-            
-            terms = - 0.5*dot(grad(psi),(phi_rein+phi0)*phin)*dx \
-                    + dot(phi_rein*phi0*phin,grad(psi))*dx \
-                    + (self.eps/2)*(dot(grad(phi_rein)+grad(phi0),phin)*dot(grad(psi),phin))*dx
+                terms = - phi_rein*(1.0 - phi_rein)*inner(grad(psi), phin)*dx \
+                        + self.eps*inner(grad(phi_rein), grad(psi))*dx  
 
-        F += terms
+            elif (self.lsr_method == 'new_method'):
+                
+                terms = - 0.5*dot(grad(psi),(phi_rein+phi0)*phin)*dx \
+                        + dot(phi_rein*phi0*phin,grad(psi))*dx \
+                        + (self.eps/2)*(dot(grad(phi_rein)+grad(phi0),phin)*dot(grad(psi),phin))*dx
+        
+            F += terms
+
+        elif (self.element == 'DG'):
+
+            nn0 = abs(dot(phin('+'), fn('+')))
+            self.penalty = 50
+
+            compressive_terms = - dot ( grad ( psi ), phin * phi_rein*(1-phi_rein) ) * dx \
+                              + (dot(phin('+'), jump(psi, fn))*avg(phi_rein) \
+                              + 0.5*nn0*dot(jump(phi_rein, fn), jump(psi, fn)))*dS \
+                              - (dot(phin('+'), jump(psi, fn))*avg(phi_rein*phi_rein) \
+                              + 0.5*nn0*dot(jump(phi_rein*phi_rein, fn), jump(psi, fn)))*dS \
+
+            diffusive_terms = self.eps*(inner(grad(phi_rein), grad(psi))*dx \
+                            + (self.penalty/self.hmin)*dot(jump(psi, fn), jump(phi_rein, fn))*dS \
+                            - dot(avg(grad(psi)), jump(phi_rein, fn))*dS \
+                            - dot(jump(psi, fn), avg(grad(phi_rein)))*dS)
+
+            F += compressive_terms
+            F += diffusive_terms
 
         self.F_clsr = F
 
@@ -98,7 +130,7 @@ class Flow():
             
                 if (self.constitutive_equation == 'Giesekus'):
 
-                    F += (self.alpha*self.lamb/self.eta_p)*inner(tau0*tau0,zeta)*dx \
+                    F += (self.gmf*self.lamb/self.eta_p)*inner(tau0*tau0,zeta)*dx \
 
             elif (self.dimensional == 'NonDim'):
 
@@ -110,7 +142,7 @@ class Flow():
 
                 if (self.constitutive_equation == 'Giesekus'):
 
-                    + (self.alpha*self.Wi/(1-self.beta))*inner(tau0*tau0,zeta)*dx \
+                    + (self.gmf*self.Wi/(1-self.beta))*inner(tau0*tau0,zeta)*dx \
 
         self.a_ce = lhs(F)
         self.m_ce = rhs(F)
@@ -235,13 +267,19 @@ class Flow():
         
         phi0.assign(phi)
 
-        F_norm = inner((phin-new_norm(phi0)),psin)*dx
-        
-        solve(F_norm == 0, phin, solver_parameters={"newton_solver": {"linear_solver": 'gmres', \
-                                               "preconditioner": 'default', "maximum_iterations": 20, \
-                                               "absolute_tolerance": 1e-8, "relative_tolerance": 1e-6}}, \
-                                               form_compiler_parameters={"optimize": True})
+        if (self.element == 'CG'):
 
+            F_norm = inner((phin-new_norm(phi0)),psin)*dx
+
+            solve(F_norm == 0, phin, solver_parameters={"newton_solver": {"linear_solver": 'gmres', \
+                                        "preconditioner": 'default', "maximum_iterations": 20, \
+                                        "absolute_tolerance": 1e-8, "relative_tolerance": 1e-6}}, \
+                                        form_compiler_parameters={"optimize": True})
+
+        if (self.element == 'DG'):
+
+            phin = ngamma(phi0)
+        
         self.E = 0
         self.tol = 1.0e-4
         
@@ -342,6 +380,6 @@ class Flow():
     #         - dot(tau0, trans(grad(u0))) \
     #         - dot(grad(u0), tau0),zeta)*dx \
     #         + (1/Wi)*inner((tau0-self.Id) \
-    #         + alpha*(tau0-self.Id)*(tau0-self.Id), zeta)*dx) \
+    #         + gmf*(tau0-self.Id)*(tau0-self.Id), zeta)*dx) \
     #         + inner(poly_flux(u0,self.facet_normal,tau0)('+') - poly_flux(u0,self.facet_normal,tau0)('-'),jump(zeta))*dS
 

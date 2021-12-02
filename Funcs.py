@@ -90,35 +90,54 @@ def phasify_noncon(phi, param_in, param_out, eps):
     
     return param_out*heaviside(phi, eps) + param_in*(1-heaviside(phi, eps))
 
-def dim_to_nondim(fluid, 
-                  length_dim,
-                  height_dim,
-                  grav,
-                  surf_tens,
-                  T_dim,
-                  dt_dim,
-                  size):
+# def dim_to_nondim(fluid, 
+#                   length_dim,
+#                   height_dim,
+#                   grav,
+#                   surf_tens,
+#                   T_dim,
+#                   dt_dim,
+#                   size):
 
-    mesh_nondim = RectangleMesh(Point(0,0),Point(length_dim, height_dim),size,2*size) 
+#     mesh_nondim = RectangleMesh(Point(0,0),Point(length_dim, height_dim),size,2*size) 
 
-    if (fluid == 'Newtonian'):
+#     if (fluid == 'Newtonian'):
         
-        rho_in = 
-        rho_out = 
-        Re = 
-        Fr = 
-        We = 
+#         rho_in = 
+#         rho_out = 
+#         Re = 
+#         Fr = 
+#         We = 
 
-    if (fluid == 'Viscoelastic'):
+#     if (fluid == 'Viscoelastic'):
 
-        pass
+#         pass
 
-    Re = 
+#     Re = 
 
 
 
-    return pass
+#     return pass
 
-def nondim_to_dim():
+# def nondim_to_dim():
 
-    return 
+#     return 
+
+
+
+"""good results were eps: 0.9 dtau: 1.10 size: 200 euler scheme old method order 2"""
+
+# elif (self.fluid == 'GNF_PL'):
+
+#     self.mu = phasify_con(self.phi, self.mu1[0], powerlaw(self.u0, self.pli_out))
+
+# elif (self.fluid == 'GNF_C'):
+
+#     self.mu = phasify_con(self.phi, 
+#                     carreau(self.u0, self.pli_in, self.eta0_in, self.etainf_in, self.lamb_in), 
+#                     carreau(self.u0, self.pli_out, self.eta0_out, self.etainf_out, self.lamb_out))
+
+# follows
+# follows
+# false
+# for b d

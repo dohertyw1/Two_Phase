@@ -1,0 +1,16 @@
+T = 3
+cox1 = 0
+coy1 = 0
+cox2 = 1
+coy2 = 2
+sizex = 50
+sizey = 100
+centrex = 0.5
+centrey = 0.5
+radius = 0.25
+rho_inner = 100
+rho_outer = 1000
+mu_inner = 1
+mu_outer = 10
+gravity = 0.98
+surface_tension_coefficient = 24.5

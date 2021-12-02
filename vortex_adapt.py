@@ -7,7 +7,8 @@ from mpi4py import MPI
 comm = MPI.COMM_WORLD
 rank = comm.rank
 set_log_active(False)
-
+import time
+start = time.time()
 def ngamma(phi):
     return grad(phi)/sqrt(dot(grad(phi),grad(phi)))
 
@@ -16,25 +17,30 @@ if comm.size > 1 :
 
 parameters["std_out_all_processes"] = False;
 #parameters['krylov_solver']['nonzero_initial_guess'] = True
-# parameters['ghost_mode'] = 'shared_facet' 
 parameters["mesh_partitioner"] = "ParMETIS"
 
-T=1
-num_steps = 1000
-dt=T/num_steps
-nx = 100
-ny=nx
+element = 'DG'
+
+if element == 'DG':
+    parameters['ghost_mode'] = 'shared_facet' 
+
+file_phi = XDMFFile('vortex_adapt/test1.xdmf')
+file_phi.parameters['flush_output'] = True
+
+T=0.5
+nx = 50
+
 rein_div = 1
-num_steps_rein = 5
+num_steps_rein = 1
 
 original_mesh = UnitSquareMesh(nx,nx) 
 mesh = UnitSquareMesh(nx,nx) 
-V = FunctionSpace(mesh, 'CG', 2)
+V = FunctionSpace(mesh, element, 2)
 
 center = Point(0.5, 0.75)
 radius = 0.15
 
-eps = 0.01 #Constant(0.5*mesh.hmin()**0.9) #### !!!!!!!!!!!!!!!!!!! ####
+eps = Constant(0.01) #Constant(0.5*mesh.hmin()**0.9) #### !!!!!!!!!!!!!!!!!!! ####
 dtau = Constant(0.5*mesh.hmin()**1.1)
 
 dist = Expression('sqrt((x[0]-A)*(x[0]-A) + (x[1]-B)*(x[1]-B))-r',
@@ -50,52 +56,74 @@ t=0
 u0 = Expression(('2*sin(2*p*x[1])*sin(p*x[0])*sin(p*x[0])*cos(p*t)',
                  '-2*sin(2*p*x[0])*sin(p*x[1])*sin(p*x[1])*cos(p*t)'), degree=2,p=np.pi,t=t)
 
-Vel = VectorFunctionSpace(mesh, 'CG', 2)
+Vel = VectorFunctionSpace(mesh, 'DG', 2)
 
 uic=interpolate(u0,Vel)
 u=interpolate(u0,Vel)
 
-file_phi = XDMFFile('vortex_adapt/phi.xdmf')
-file_phi.parameters['flush_output'] = True
 
 phi = TrialFunction (V )
 w = TestFunction (V)
 phi_rein = Function(V)
 phi00 = Function(V)
-
 phi_h = Function (V)
 
-Vnormal = VectorFunctionSpace(mesh, 'CG', 1)
+dt = (0.1*mesh.hmin())/assemble(sqrt(dot(u,u))*dx)
 
-phigrad = Function(Vnormal)
-vnorm = TestFunction(Vnormal)
+if element == 'CG':
 
-F = (phi/dt)*w*dx - (phi0/dt)*w*dx + dot(u, grad(phi0))*w*dx
+    Vnormal = VectorFunctionSpace(mesh, 'CG' , 1)
 
-n = FacetNormal(mesh)
-flux = (dot(u,n) + abs(dot(u,n)))/2
+    phigrad = Function(Vnormal)
+    vnorm = TestFunction(Vnormal)
 
-def dg_form():
+    F_grad = inner((phigrad-ngamma(phi0)),vnorm)*dx
+
+    F = (phi/dt)*w*dx - (phi0/dt)*w*dx + dot(u, grad(phi0))*w*dx
+
+    F_reincg = (phi_rein - phi0)/dtau*w*dx \
+            - phi_rein*(1.0 - phi_rein)*inner(grad(w), phigrad)*dx \
+            + eps*inner(grad(phi_rein), grad(w))*dx  
+        # - 0.5*dot(grad(w),(phi_rein+phi0)*phigrad)*dx \
+        # + dot(phi_rein*phi0*phigrad,grad(w))*dx \
+        # + (eps/2)*(dot(grad(phi_rein)+grad(phi0),phigrad)*dot(grad(w),phigrad))*dx
+
+if element == 'DG':
+
+    phigrad = ngamma(phi0)
+
+    n = FacetNormal(mesh)
+    un = abs(dot(u('+'), n('+')))
+    nn0 = abs(dot(phigrad('+'), n('+')))
 
     F = (1/dt)*(phi-phi0)*w*dx \
     - dot ( grad ( w ), u0 * phi ) * dx \
-    + dot ( jump ( w ), flux('+') * phi('+') - flux('-') * phi('-') ) * dS \
-    + dot ( w, flux * phi ) * ds
+    + (dot(u('+'), jump(w, n))*avg(phi) \
+    + 0.5*un*dot(jump(phi, n), jump(w, n)))*dS \
 
-    return F
+    F_reindg = (phi_rein - phi0)/dtau*w*dx \
 
-F_grad = inner((phigrad-ngamma(phi0)),vnorm)*dx
+    alpha = 50    
 
-F_rein = (phi_rein - phi0)/dtau*w*dx \
-        - phi_rein*(1.0 - phi_rein)*inner(grad(w), phigrad)*dx \
-        + eps*inner(grad(phi_rein), grad(w))*dx
+    F_reindg_compr = - dot ( grad ( w ), phigrad * phi_rein*(1-phi_rein) ) * dx \
+                    + (dot(phigrad('+'), jump(w, n))*avg(phi_rein) \
+                    + 0.5*nn0*dot(jump(phi_rein, n), jump(w, n)))*dS \
+                    - (dot(phigrad('+'), jump(w, n))*avg(phi_rein*phi_rein) \
+                    + 0.5*nn0*dot(jump(phi_rein*phi_rein, n), jump(w, n)))*dS \
 
-dt = (0.1*mesh.hmin())/assemble(sqrt(dot(u,u))*dx)
+    F_reindg_diff = eps*(inner(grad(phi_rein), grad(w))*dx \
+                + (alpha/mesh.hmin())*dot(jump(w, n), jump(phi_rein, n))*dS \
+                - dot(avg(grad(w)), jump(phi_rein, n))*dS \
+                - dot(jump(w, n), avg(grad(phi_rein)))*dS)
+
+    F_reindg += F_reindg_compr
+    F_reindg += F_reindg_diff
 
 t=0
 q=0
 
 while t < T:
+# for n in tqdm(range(num_steps)):
 
     t+=dt
 
@@ -103,19 +131,37 @@ while t < T:
 
     phi0.assign(phi_h)
 
-    solve(F_grad == 0, phigrad)
+    if element == 'CG':
+
+        solve(F_grad == 0, phigrad)
+    
+    if element == 'DG':
+
+        phigrad = ngamma(phi0)
 
     for n in range(num_steps_rein):
 
-        solve(F_rein == 0, phi_rein ,solver_parameters={"newton_solver": {"linear_solver": 'gmres', "preconditioner": 'default',\
-                                    "maximum_iterations": 20, "absolute_tolerance": 1e-8, "relative_tolerance": 1e-6}}, \
-                                    form_compiler_parameters={"optimize": True})
+        if element == 'CG':
+
+            solve(F_reincg == 0, phi_rein ,solver_parameters={"newton_solver": {"linear_solver": 'gmres', "preconditioner": 'default',\
+                            "maximum_iterations": 20, "absolute_tolerance": 1e-8, "relative_tolerance": 1e-6}}, \
+                            form_compiler_parameters={"optimize": True})
+
+        elif element == 'DG':
+
+            solve(F_reindg == 0, phi_rein ,solver_parameters={"newton_solver": {"linear_solver": 'gmres', "preconditioner": 'default',\
+                                        "maximum_iterations": 20, "absolute_tolerance": 1e-8, "relative_tolerance": 1e-6}}, \
+                                        form_compiler_parameters={"optimize": True})
 
         phi0.assign(phi_rein)
 
     phi_h.assign(phi_rein)
 
-    file_phi.write(phi_rein, t)
+    file_phi.write(phi_h, t)
     
     u.t = t
     q+=1
+
+
+print('It took', time.time()-start, 'seconds.')
+

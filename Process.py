@@ -3,7 +3,7 @@ import csv
 import matplotlib.pyplot as plt
 import numpy as np
 
-# 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
+# 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
 
 class Process():
 
@@ -13,12 +13,14 @@ class Process():
         # self.method = 'Cons'
         # self.fluid = 'Newtonian'
 
+    """Load in data from the Multiphase.py solver."""
     def load_data(self, suffix):
 
-        with open(f'{self.method}_{self.fluid}/{self.method}_{self.fluid}_{suffix}.csv', newline='') as csvfile:
+        with open(f'{self.method}_{self.fluid}_{self.element}/{self.method}_{self.fluid}_{self.element}_{suffix}.csv', newline='') as csvfile:
 
             self.raw_data = np.array(list(csv.reader(csvfile, delimiter='\t')))
 
+    """Sort raw data into respective lists of data."""
     def categorise_data(self):
 
         self.timescale = []
@@ -37,6 +39,7 @@ class Process():
 
                 variable.append(float(self.raw_data[i][variables.index(variable)]))
 
+    """Load in the Newtonian benchmark data from bubble_benchmarks file."""
     def load_benchmark_data(self, case):
 
         raw_FreeLIFE_timescale = []
@@ -99,13 +102,14 @@ class Process():
 
                 variable.append(float(raw_MooNMD[self.MooNMD.index(variable)][0][i]))
 
+    """Load in the saved bubble shape from the last temporal iteration."""
     def load_bubble_shape(self, mesh_saved):
 
         if (mesh_saved):
 
             mesh = Mesh()
 
-            with XDMFFile(f'{self.method}_{self.fluid}/phi_read.xdmf') as infile:
+            with XDMFFile(f'{self.method}_{self.fluid}_{self.element}/phi_read.xdmf') as infile:
 
                 infile.read(mesh)
 
@@ -116,10 +120,11 @@ class Process():
         V = FunctionSpace(mesh, 'CG', self.ls_order) 
         self.level_set = Function(V)
 
-        with XDMFFile(f'{self.method}_{self.fluid}/phi_read.xdmf') as infile:
+        with XDMFFile(f'{self.method}_{self.fluid}_{self.element}/phi_read.xdmf') as infile:
 
             infile.read_checkpoint(self.level_set, "phi")
 
+    """Plot for various quantities."""
     def individual_plotter(self, variable):
 
         if (variable == 'Area'):
@@ -155,6 +160,7 @@ class Process():
         plt.legend(['Current study', 'MooNMD Benchmark','FreeLIFE Benchmark'])
         plt.tight_layout()
 
+    """Run the post processing."""
     def post_process(self):
 
         self.load_data('data')
@@ -177,9 +183,6 @@ class Process():
             self.individual_plotter('Centre of mass')
             plt.subplot(224)
             self.individual_plotter('Rise Velocity')
-            plt.suptitle(f'{self.method}_{self.fluid}')
-            plt.savefig('test')
+            plt.suptitle(f'{self.method}_{self.fluid}_{self.element}')
+            plt.savefig(f'test{self.element}')
             plt.show()
-
-# case = Process()
-# case.post_process()
