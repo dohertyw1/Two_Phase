@@ -1,129 +1,87 @@
 from fenics import *
-import numpy as np
-from tqdm import tqdm
-import csv
-import os
-from mpi4py import MPI
+import meshio
 from Flow import *
 from Funcs import *
 from Process import *
 from ParameterHandler import *
 
-class Multiphase(Flow, Process, ParameterHandler):
+class Multiphase():
 
     """"Initialise material parameters, mesh and test case data"""
-    def __init__(self, test_case, method, fluid, constitutive_equation, dimensional, stability, 
-                 ls_scheme, lsr_method, rein_steps,location, dimension, ls_order, element):
+    def __init__(self):
 
-        super().__init__()
-
-        self.test_case = test_case
-        self.method = method
-        self.fluid = fluid
-        self.constitutive_equation = constitutive_equation
-        self.dimensional = dimensional
-        self.stability = stability
-        self.ls_scheme = ls_scheme
-        self.rein_steps = rein_steps
-        self.lsr_method = lsr_method
-        self.location = location
-        self.dimension = dimension
-        self.ls_order = ls_order
-        self.element = element
-
-        self.rein_div = 1
-        self.comm = MPI.comm_world
-        self.rank = MPI.rank(self.comm)
-        self.Id = Identity(int(self.dimension[0]))
+        pass
                    
-        # if (self.test_case == 1):
-
-        #     self.height = 2
-        #     self.length = 1
-        #     self.mu1 = [1, "Inside"]
-        #     self.rho1 = [100, "Inside"]
-        #     self.mu2 = [10, "Outside"]
-        #     self.rho2 = [1000, "Outside"]
-        #     self.sigma = 24.5
-        #     self.centre = [0.5, 0.5]
-        #     self.radius = 0.25
-            
-        # elif (self.test_case == 2):
-            
-        #     self.height = 2
-        #     self.length = 1
-        #     self.mu1 = [0.1, "Inside"]
-        #     self.rho1 = [1, "Inside"]
-        #     self.mu2 = [10, "Outside"]
-        #     self.rho2 = [1000, "Outside"]
-        #     self.sigma = 1.96
-        #     self.centre = [0.5, 0.5]
-        #     self.radius = 0.25
-        #     self.dt = (1/self.size)/2
-
-        # if (self.fluid == 'Viscoelastic'):
-
-        #     self.eta_s_in = 1.025
-        #     self.eta_p_in = 0
-        #     self.eta_s_out = 0.7175
-        #     self.eta_p_out = 9.5325
-        #     self.lamb_in = 0
-        #     self.lamb_out = 0.2
-        #     self.rho1 = [0.1, "Inside"]
-        #     self.rho2 = [1, "Outside"]
-        #     self.sigma = 10
-        #     self.alpha = 0.1
-
-        #     self.beta1 = 1
-        #     self.beta2 = 0.07 
-        #     self.Re2 = 1.419436759
-        #     self.Re_eps = 10
-        #     self.Wi1 = 0
-        #     self.Wi2 = 8.082903769
-        #     self.Eo = 35.28
-
-        #     if (self.dimensional == 'Dim'):
-                
-        #         self.height = 4
-        #         self.length = 2
-        #         self.mesh = RectangleMesh(Point(0,0),Point(self.length,self.height),self.size,2*self.size) 
-        #         self.g = Constant((0,980))
-        #         self.centre = [1, 1]
-        #         self.radius = 0.3
-        #         self.eps = 0.02
-        #         self.curvature = Constant(self.sigma)
-                
-        #         self.T = 0.13
-        #         self.dt = 0.001
-        #         self.num_steps = int(self.T/self.dt)
-
-        #     if (self.dimensional == 'NonDim'):
-
-        #         self.height = 6.666
-        #         self.length = 3.333
-        #         self.mesh = RectangleMesh(Point(0,0),Point(self.length,self.height),self.size,2*self.size) 
-        #         self.g = Constant((0,1))
-        #         self.centre = [1/0.6, 1/0.6]
-        #         self.radius = 0.3/0.6
-        #         self.eps = 0.0333333
-        #         self.curvature = Constant(1/self.Eo)
-
-        #         self.T = 0.3*(np.sqrt(980*0.6))/0.6 
-        #         self.dt = (0.001*(np.sqrt(980*0.6))/0.6)
-        #         self.num_steps = int(self.T/self.dt)
-
     """Construct the mesh for the problem."""
     def mesh_constructor(self):
 
         if (self.dimension == '2D'):
 
-            self.mesh = RectangleMesh(Point(self.cox1,self.coy1),Point(self.cox2,self.coy2),self.sizex,self.sizey) 
+            if (self.mesh_from_file == 'False'):
 
-        # elif (self.dimension == '3D'):
+                self.mesh = RectangleMesh(Point(self.cox1,self.coy1),Point(self.cox2,self.coy2),self.sizex,self.sizey, self.element_orientation) 
+                self.amesh =  RectangleMesh(Point(self.cox1,self.coy1),Point(self.cox2,self.coy2),200,800, self.element_orientation)
+                
+                # if (self.rank == 0):
+                    
+                # cell_markers = MeshFunction("bool", self.mesh, self.mesh.topology().dim())
+                # cell_markers.set_all(False)
+                # for cell in cells(self.mesh):
+                #     for facet in facets(cell): 
+                #         for vertex in vertices(facet):
+                #             if (0.06 <= vertex.point().array()[0] <= 0.07):
+                #                 cell_markers[cell] = True
 
-        #     self.mesh = BoxMesh(Point(0,0,0), Point(1,2,1), self.sizex, self.sizey, self.sizex)
-        #     
+                # self.mesh = refine(self.mesh, cell_markers)
+
+                # cell_markers = MeshFunction("bool", self.mesh, self.mesh.topology().dim())
+                # cell_markers.set_all(False)
+                # for cell in cells(self.mesh):
+                #     for facet in facets(cell): 
+                #         for vertex in vertices(facet):
+                #             if (0.06 <= vertex.point().array()[0] <= 0.065):
+                #                 cell_markers[cell] = True
+
+                # self.mesh = refine(self.mesh, cell_markers)
+
+                # cell_markers = MeshFunction("bool", self.mesh, self.mesh.topology().dim())
+                # cell_markers.set_all(False)
+                # for cell in cells(self.mesh):
+                #     for facet in facets(cell): 
+                #         for vertex in vertices(facet):
+                #             if (0.06 <= vertex.point().array()[0] <= 0.065):
+                #                 cell_markers[cell] = True
+
+                # self.mesh = refine(self.mesh, cell_markers)
+                # File(f"{self.file_string}/Meshes/mesh.pvd") << self.mesh
+
+            elif (self.mesh_from_file == 'True'):
+
+                if (self.rank == 0):
+
+                    msh = meshio.read(f"{self.mesh_file_path}")
+
+                    triangle_mesh = create_mesh(msh, "triangle", prune_z=True)
+
+                    try:
+
+                        meshio.write(f"{self.file_string}/mesh.xdmf", triangle_mesh)
+
+                    except FileNotFoundError:
+
+                        os.mkdir(f'{self.file_string}')
+                        meshio.write(f"{self.file_string}/mesh.xdmf", triangle_mesh)
+                        
+                self.mesh = Mesh()
+                with XDMFFile(f"{self.file_string}/mesh.xdmf") as infile:
+                    infile.read(self.mesh)
+
+        elif (self.dimension == '3D'):
+
+            self.mesh = BoxMesh(Point(self.cox1,self.coy1,self.coz1), Point(self.cox2,self.coy2,self.coz2), self.sizex, self.sizey, self.sizez)
+            
         self.fn = FacetNormal(self.mesh)
+        self.x_axi = SpatialCoordinate(self.mesh)
         self.hmin = self.mesh.hmin()
 
     """"Define signed distance function (ncls and cls) and heaviside function (cls)"""
@@ -132,75 +90,111 @@ class Multiphase(Flow, Process, ParameterHandler):
         if (self.method == 'NCons'):
 
             self.alph = Constant(0.0625*self.hmin)
-            self.eps1 = Constant(self.hmin)
-            self.eps = Constant(1.50*self.hmin) 
-            self.dtau = Constant(0.10*self.hmin) 
+            # self.eps1 = Constant(1.5*self.hmin)
+            self.eps = Constant(1.5*self.hmin) #Constant(self.hmin) 
+            self.dtau = Constant(0.1*self.hmin) 
         
         elif (self.method == 'Cons'):
 
-            self.d = 0.10
-            self.dtau = Constant(0.50*self.hmin**(1+self.d)) 
-
-            if (self.sizex == 50):
-
-                self.eps = 0.005
+            self.compressor = 4
+            self.dtau = Constant(0.1*self.hmin) 
+            self.eps = Constant(1.5*self.hmin)
             
-            else:
-
-                self.eps = Constant(0.50*self.hmin**(1-self.d))
-
         if (self.dimension == '2D'):
 
             self.sdf = Expression('sqrt((pow((x[0]-A),2))+(pow((x[1]-B),2)))-r', degree=2, A=self.centrex, B=self.centrey, r=self.radius)
+
             self.g = Constant((0,self.grav))
             
-        # elif (self.dimension == '3D'):
+        elif (self.dimension == '3D'):
 
-        #     self.sdf = Expression('sqrt((pow((x[0]-A),2))+(pow((x[1]-B),2))+(pow((x[2]-C),2)))-r', degree=2, A=0.5, B=0.5, C=0.5, r=0.25)
-        #     self.g = Constant((0,self.grav,0))
+            self.sdf = Expression('sqrt((pow((x[0]-A),2))+(pow((x[1]-B),2))+(pow((x[2]-C),2)))-r', degree=2,
+                                 A=self.centrex, B=self.centrey, C=self.centrez, r=self.radius)
+
+            self.g = Constant((0,self.grav,0))
 
         if (self.method == 'Cons'):
 
             self.hdf = Expression('(1/(1+exp((dist/eps))))',degree=2, eps=self.eps, dist=self.sdf)
 
-    """Initialise FEM spaces and functions"""
-    def fem_data(self):
-        
-        """ Level Set spaces/functions """
+    def level_set_funcs(self):
+
         self.Q = FunctionSpace(self.mesh, self.element, self.ls_order)
-        self.Vnorm = VectorFunctionSpace(self.mesh, 'CG', 1)
+        self.Q_normal = VectorFunctionSpace(self.mesh, 'CG', self.ls_order)
+
+        if (self.element == 'CG'):
+
+            self.Q_rein = self.Q
+
+        elif (self.element == 'DG'):
+
+            self.Q_rein = FunctionSpace(self.mesh, 'CG', self.ls_order)
 
         self.phi = TrialFunction(self.Q)
         self.psi = TestFunction(self.Q)
-        self.phi_rein = Function(self.Q)
+
+        self.phi_rein = Function(self.Q_rein)
+        self.psi_rein = TestFunction(self.Q_rein)
+
+        self.phin = Function(self.Q_normal)
+        self.psin = TestFunction(self.Q_normal)
+
+        if (self.element == 'DG'):
+        
+            self.phi_h = Function(self.Q)
 
         if (self.method == 'NCons'):
 
             self.phi0 = interpolate(self.sdf,self.Q)
-            self.phi00 = interpolate(self.sdf,self.Q)
             self.phiic = interpolate(self.sdf,self.Q)
             self.sign = sgn(self.phi0, self.eps1)
-            self.phin = Function(self.Vnorm)
-            self.psin = TestFunction(self.Vnorm)
         
         elif (self.method == 'Cons'):
 
             self.phi0 = interpolate(self.hdf,self.Q)
-            self.phi00 = interpolate(self.hdf,self.Q)
             self.phiic = interpolate(self.hdf,self.Q)
-            self.phin = Function(self.Vnorm)
-            self.psin = TestFunction(self.Vnorm)
 
-        """ Pressure spaces/functions """
-        self.P = FunctionSpace(self.mesh, 'CG', 1)
+    def ns_funcs(self):
 
-        self.p = TrialFunction(self.P)
-        self.q = TestFunction(self.P)
-        self.p0 = Function(self.P)
-        self.p_  = Function(self.P)
+        if (self.phase == 'single'):
 
-        """ Velocity spaces/functions """
-        if (self.stability == None):
+            # self.P = FunctionSpace(mesh, FiniteElement('CG', mesh.ufl_cell(), 1))
+            # self.V = FunctionSpace(mesh, VectorElement('CG', mesh.ufl_cell(), 2))
+            self.St = FunctionSpace(self.mesh, TensorElement('DG', self.mesh.ufl_cell(), 0))
+            self.D = FunctionSpace(self.mesh, TensorElement('CG', self.mesh.ufl_cell(), 2))
+
+            self.stokes = FunctionSpace(self.mesh,
+                          MixedElement([ VectorElement('CG', self.mesh.ufl_cell(), 2),
+                          FiniteElement('CG', self.mesh.ufl_cell(), 1)]))
+
+            self.tau = TrialFunction(self.St)
+            self.S = TestFunction(self.St)
+            self.tau1 = Function(self.St)
+
+            (self.u, self.p) = TrialFunctions(self.stokes)
+            (self.v, self.q) = TestFunctions(self.stokes)
+
+            self.w1 = Function(self.stokes)
+            (self.u1, self.p1) = split(self.w1)
+
+            self.ws = Function(self.stokes)
+            (self.us, self.ps) = split(self.ws)
+
+            self.taus = Function(self.St)
+
+            self.G = Function(self.D)
+            self.Gs = TestFunction(self.D)
+
+        else:
+
+            """ Pressure spaces/functions """
+            self.P = FunctionSpace(self.mesh, 'CG', 1)
+            self.p = TrialFunction(self.P)
+            self.q = TestFunction(self.P)
+            self.p0 = Function(self.P)
+            self.p_  = Function(self.P)
+
+            """ Velocity spaces/functions """
 
             self.V = VectorFunctionSpace(self.mesh, 'CG', 2)
 
@@ -209,305 +203,214 @@ class Multiphase(Flow, Process, ParameterHandler):
             self.u0 = Function(self.V) 
             self.u_ = Function(self.V)
 
-        """ Stress spaces/functions """
-        if (self.stability == None):
+            """ Stress spaces/functions """
+                
+            if (self.ps_element == 'CG'):
+                ps_order = 2
+            elif (self.ps_element == 'DG'):
+                ps_order = 0
 
-            self.T = TensorFunctionSpace(self.mesh, 'CG', 2)
+            self.T = TensorFunctionSpace(self.mesh,self.ps_element, ps_order)
+            self.Ttheta = FunctionSpace(self.mesh,self.ps_element, ps_order)
 
             self.tau = TrialFunction(self.T)
+            self.tautt = TrialFunction(self.Ttheta)
             self.zeta = TestFunction(self.T)
+            self.zetatt = TestFunction(self.Ttheta)
             self.tau0 = Function(self.T)
+            self.tau0tt = Function(self.Ttheta)
 
-        """ DEVSSG-DG spaces/functions"""
+            """DEVSSG space/functions"""
+            self.T_DEVSSG = TensorFunctionSpace(self.mesh, 'DG', 2)
 
-        if (self.stability == 'DEVSSG-DG'):
+            self.G = TrialFunction(self.T_DEVSSG)
+            self.R = TestFunction(self.T_DEVSSG)
 
-            self.T = TensorFunctionSpace(self.mesh, 'DG', 0)
-            self.V_element = VectorElement('CG', self.mesh.ufl_cell(), 2) 
-            self.D_element = TensorElement('DG', self.mesh.ufl_cell(), 2)
-            self.VD = self.V_element*self.D_element
-            self.W = FunctionSpace(self.mesh, self.VD)
+            self.T_tt_DEVSSG = FunctionSpace(self.mesh, 'DG', 2)
+            self.G_tt = TrialFunction(self.T_tt_DEVSSG)
+            self.R_tt = TestFunction(self.T_tt_DEVSSG)
 
-            self.u, self.G = TrialFunctions(self.W)
-            self.v, self.R = TestFunctions(self.W)
-
-            self.w0 = Function(self.W)
-            (self.u0, self.G0) = split(self.w0)
-
-            self.w_ = Function(self.W)
-            (self.u_, self.G_) = split(self.w_)
+            self.G1 = Function(self.T_DEVSSG)
+            self.G1_tt = Function(self.T_tt_DEVSSG)
+            self.GRAD = Function(self.T_DEVSSG)
+            self.GRAD_tt = Function(self.T_tt_DEVSSG)
 
     """Construct boundary conditions"""
     def bcs(self):
+
+        if not (self.phase == 'single'):
         
-        self.bcs = []
+            self.bcs = []
+            
+            # fswalls = f'near(x[0], {self.cox1})'
+            # fswalls_x = 'near(x[0], 0) || near(x[0], 1)'
+            # fswalls_z = 'near(x[2], 0) || near(x[2], 1)'
 
-        walls   = f'near(x[1], {self.coy1}) || near(x[1], {self.coy2})'
-        fswalls = f'near(x[0], {self.cox1}) || near(x[0], {self.cox2})'
+            if (self.dimension == '2D'):
 
-        fswalls_x = 'near(x[0], 0) || near(x[0], 1)'
-        fswalls_z = 'near(x[2], 0) || near(x[2], 1)'
+                if (self.boundary_conditions == 'freeslip'):
 
-        if (self.dimension == '2D'):
+                    walls   = f'near(x[1], {self.coy1}) || near(x[1], {self.coy2})'
+                    fswalls = f'near(x[0], {self.cox1}) || near(x[0], {self.cox2})'
 
-            bcu_noslip  = DirichletBC(self.V, Constant((0, 0)), walls)
-            bcu_fslip  = DirichletBC(self.V.sub(0), Constant(0), fswalls)
+                    bcu_noslip  = DirichletBC(self.V, Constant((0, 0)), walls)
+                    bcu_fslip  = DirichletBC(self.V.sub(0), Constant(0), fswalls)
 
-            self.bc_ns = [bcu_noslip, bcu_fslip]
+                    self.bc_ns = [bcu_noslip, bcu_fslip]
+                
+                if (self.boundary_conditions == 'noslip'):
 
-        elif (self.dimension == '3D'):
+                    walls   = f'near(x[1], {self.coy1}) || near(x[1], {self.coy2}) || near(x[0], {self.cox1}) || near(x[0], {self.cox2})'
+                    
+                    # class Wedge(SubDomain):
+                    #     def inside(self, x, on_boundary):
+                    #         return on_boundary and (between(x[0], (-1, 1)) and between(x[1], (0, 1)))
 
-            bcu_noslip  = DirichletBC(self.V, Constant((0, 0, 0)), walls)
-            bcu_fslip_x = DirichletBC(self.V.sub(0), Constant(0), fswalls_x)
-            bcu_fslip_z = DirichletBC(self.V.sub(2), Constant(0), fswalls_z)
+                    bcu_noslip  = DirichletBC(self.V, Constant((0, 0)), walls)
 
-            self.bc_ns = [bcu_noslip, bcu_fslip_x, bcu_fslip_z]
+                    self.bc_ns = [bcu_noslip]
+
+            elif (self.dimension == '3D'):
+
+                walls = f'near(x[1], {self.coy1}) || near(x[1], {self.coy2})'
+                fswall = f'near(x[0], {self.cox1}) || near(x[0], {self.cox2}) || near(x[2], {self.coz1}) || near(x[2], {self.coz2})'
+
+                bcu_noslip  = DirichletBC(self.V, Constant((0, 0, 0)), walls)
+                bcu_fslip_x = DirichletBC(self.V.sub(0), Constant(0), fswall)
+                # bcu_fslip_z = DirichletBC(self.V.sub(2), Constant(0), fswalls_z)
+
+                self.bc_ns = [bcu_noslip, bcu_fslip_x]
+        
+        else:
+
+            class Inflow(SubDomain):
+                def inside(self, x, on_boundary):
+                    return on_boundary and near(x[0], -20)
+
+            class Top_Wall(SubDomain):
+                def inside(self, x, on_boundary):
+                    return on_boundary and near(x[1], 2)
+
+            class Bottom_Wall(SubDomain):
+                def inside(self, x, on_boundary):
+                    return on_boundary and near(x[1], 0)
+
+            class Outflow(SubDomain):
+                def inside(self, x, on_boundary):
+                    return on_boundary and near(x[0], 20)
+
+            class Wedge(SubDomain):
+                def inside(self, x, on_boundary):
+                    return on_boundary and (between(x[0], (-1, 1)) and between(x[1], (0, 1)))
+
+            subdomains = MeshFunction("size_t", self.mesh, self.mesh.topology().dim() - 1)
+            
+            inflow = Inflow()
+            inflow.mark(subdomains, 1)
+
+            top_wall = Top_Wall()
+            top_wall.mark(subdomains, 2)
+
+            bottom_wall = Bottom_Wall()
+            bottom_wall.mark(subdomains, 3)
+
+            outflow = Outflow()
+            outflow.mark(subdomains, 4)
+
+            wedge = Wedge()
+            wedge.mark(subdomains, 5)
+
+            self.ds_circle = Measure("ds", subdomain_data=subdomains, subdomain_id=5)
+
+            vel_inflow = Expression(('1.5*(1-(x[1]*x[1]/4))', '0'), degree=2)
+
+            str_inflow = Expression((('2*We*(1-beta)*(9/16)*x[1]*x[1]',
+                                        '-3/4*(1-beta)*x[1]'),
+                                        ('-3/4*(1-beta)*x[1]', '0')),
+                                        degree=2, We=self.We, beta=self.beta)
+
+            stress_inflow_0 = DirichletBC(self.St, str_inflow, subdomains, 1)
+            velocity_inflow_1 = DirichletBC(self.stokes.sub(0), vel_inflow, subdomains, 1)
+            noslip_top_1 = DirichletBC(self.stokes.sub(0), vel_inflow, subdomains, 2)
+            symmetry_1 = DirichletBC(self.stokes.sub(0).sub(1), Constant(0), subdomains, 3)
+            outflow_condition_1 = DirichletBC(self.stokes.sub(0).sub(1), Constant(0), subdomains, 4)
+            outflow_pressure_1 = DirichletBC(self.stokes.sub(1), Constant(0), subdomains, 4)
+            noslip_wedge_1 = DirichletBC(self.stokes.sub(0), Constant((0, 0)), subdomains, 5)
+
+            self.bcst = [stress_inflow_0]
+
+            self.bcup = [velocity_inflow_1,
+                    noslip_top_1,
+                    symmetry_1,
+                    outflow_condition_1,
+                    noslip_wedge_1,
+                    outflow_pressure_1]
+            
+            # self.bcup2 = [noslip_top_1,
+            #         symmetry_1,
+            #         outflow_condition_1,
+            #         noslip_wedge_1,
+            #         outflow_pressure_1]
 
     """Calculate density/viscosity functions depending on level set and type of fluid."""
     def mat_pams(self):
 
         if (self.method == 'NCons'):
 
-            self.rho = phasify_noncon(self.phi, self.rho1, self.rho2, self.eps)
-            self.rho0 = phasify_noncon(self.phi00, self.rho1, self.rho2, self.eps)
+            self.rho = phasify_noncon(self.phi0, self.rho1, self.rho2, self.eps)
+            self.rho0 = phasify_noncon(self.phi0, self.rho1, self.rho2, self.eps)
 
             if (self.fluid == 'Newtonian'):
 
-                self.mu = phasify_noncon(self.phi, self.mu1, self.mu2, self.eps)
+                self.mu = phasify_noncon(self.phi0, self.mu1, self.mu2, self.eps)
 
-            elif (self.fluid == 'Viscoelastic'):
-
-                pass
-
-        elif (self.method == 'Cons'):
-
-            self.rho = phasify_con(self.phi, self.rho1, self.rho2)
-            self.rho0 = phasify_con(self.phi00, self.rho1, self.rho2)
-
-            if (self.fluid == 'Newtonian'):
-
-                self.mu = phasify_con(self.phi, self.mu1, self.mu2)
-            
             elif (self.fluid == 'Viscoelastic'):
 
                 if (self.constitutive_equation == 'OB' or self.constitutive_equation == 'Giesekus') and (self.dimensional == 'Dim'):
 
-                    self.eta_s = phasify_con(self.phi, self.eta_s_in, self.eta_s_out)
+                    self.eta_s = phasify_noncon(self.phi0, self.eta_s_in, self.eta_s_out, self.eps)
 
-                    self.eta_p = phasify_con(self.phi, self.eta_p_in, self.eta_p_out)
+                    self.eta_p = phasify_noncon(self.phi0, self.eta_p_in, self.eta_p_out, self.eps)
 
-                    self.lamb = phasify_con(self.phi, self.lamb_in, self.lamb_out)
-
-                if (self.constitutive_equation == 'OB' or self.constitutive_equation == 'Giesekus') and (self.dimensional == 'NonDim'):
-
-                    self.beta = phasify_con(self.phi, self.beta1, self.beta2)
-
-                    self.Re = phasify_con(self.phi, self.Re2*self.Re_eps, self.Re2)
-
-                    self.Wi = phasify_con(self.phi, 0, self.Wi2)
-
-    """Write the solution to file."""
-    def write_to_file(self):
-
-        self.xdmf_file_phi.write(self.phi0, self.t)
-        self.xdmf_file_u.write(self.u0, self.t)
-        self.xdmf_file_p.write(self.p0, self.t)
-
-        if (self.fluid == 'Viscoelastic'):
-
-            self.xdmf_file_tau.write(self.tau0, self.t)
-
-    """Calculate benchmark data."""
-    def process_data(self):
-
-        if (self.method == 'NCons' and self.dimension == '2D'):
-
-            area = assemble(conditional(lt(self.phi0, 0), 1.0, 0.0)*dx)
-            x_com = assemble(Expression("x[0]", degree = 1)*(conditional(lt(self.phi0, 0), 1.0, 0.0))*dx)/area
-            y_com = assemble(Expression("x[1]", degree = 1)*(conditional(lt(self.phi0, 0), 1.0, 0.0))*dx)/area
-
-            Pa = 2.0*sqrt(np.pi*area)
-            Pb = assemble(mgrad(self.phi0)*delta_func(self.phi0/sqrt(dot(grad(self.phi0),grad(self.phi0))), self.eps)*dx)
-            circ = Pa/Pb
-
-            u_rise = assemble(self.u0[0]*(conditional(lt(self.phi0, 0), 1.0, 0.0))*dx)/area
-            v_rise = assemble(self.u0[1]*(conditional(lt(self.phi0, 0), 1.0, 0.0))*dx)/area
-
-        if (self.method == 'Cons' and self.dimension == '2D'):
-
-            area = assemble(self.phi0*dx)
-            x_com = assemble(Expression("x[0]", degree = 1)*self.phi0*dx)/area
-            y_com = assemble(Expression("x[1]", degree = 1)*self.phi0*dx)/area
-
-            Pa = 2.0*sqrt(np.pi*area)
-            Pb = assemble(mgrad(self.phi0)*dx)
-            circ = Pa/Pb
-
-            u_rise = assemble(self.u0[0]*self.phi0*dx)/area
-            v_rise = assemble(self.u0[1]*self.phi0*dx)/area
-
-        self.timeseries = [self.t, area, x_com, y_com, circ, u_rise, v_rise]
-
-        if self.rank == 0:
-            with open((f"{self.method}_{self.fluid}_{self.element}/{self.method}_{self.fluid}_{self.element}_data.csv"), 'a') as csvfile:
-                f = csv.writer(csvfile, delimiter='\t',lineterminator='\n',)
-                f.writerow(self.timeseries)
-
-    """Write final level-set function to separate file in order to retrieve the bubble shape"""
-    def process_shape(self):
-
-        if (self.method == 'NCons'):
-
-            with XDMFFile(f"{self.method}_{self.fluid}_{self.element}/phi_read.xdmf") as outfile:
-
-                outfile.write_checkpoint(self.phi0, "phi", 0, append=True)
+                    self.lamb = phasify_noncon(self.phi0, self.lamb_in, self.lamb_out, self.eps)
 
         elif (self.method == 'Cons'):
 
-            with XDMFFile(f"{self.method}_{self.fluid}_{self.element}/phi_read.xdmf") as outfile:
+            self.rho = phasify_con(self.phi0, self.rho1, self.rho2)
+            self.rho0 = phasify_con(self.phi0, self.rho1, self.rho2)
 
-                outfile.write_checkpoint(self.phi0, "phi", 0, append=True)
+            if (self.fluid == 'Newtonian'):
 
-    """Set up files to save data and delete old data."""
-    def set_up_files(self):
+                if (self.dimensional == 'Dim'):
 
-        self.xdmf_file_phi = XDMFFile(f'{self.method}_{self.fluid}_{self.element}/phi.xdmf')
-        self.xdmf_file_u = XDMFFile(f'{self.method}_{self.fluid}_{self.element}/u.xdmf')
-        self.xdmf_file_p = XDMFFile(f'{self.method}_{self.fluid}_{self.element}/p.xdmf')
+                    self.mu = phasify_con(self.phi0, self.mu1, self.mu2)
 
-        if (self.fluid == 'Viscoelastic'):
+                elif (self.dimensional == 'NonDim'):
 
-            self.xdmf_file_tau = XDMFFile(f'{self.method}_{self.fluid}_{self.element}/tau.xdmf')
-            self.xdmf_file_tau.parameters['flush_output'] = True 
+                    self.mu = phasify_con(self.phi0, self.mu1, self.mu2)
 
-        if (self.rank == 0 and os.path.isfile(f'{self.method}_{self.fluid}_{self.element}/{self.method}_{self.fluid}_{self.element}_data.csv') == True):
+                    self.Re = phasify_con(self.phi0, self.Re1, self.Re2)
+            
+            elif (self.fluid == 'Viscoelastic'):
 
-            os.remove(f'{self.method}_{self.fluid}_{self.element}/{self.method}_{self.fluid}_{self.element}_data.csv')
-          
-        self.xdmf_file_phi.parameters['flush_output'] = True
-        self.xdmf_file_u.parameters['flush_output'] = True
-        self.xdmf_file_p.parameters['flush_output'] = True  
+                if (self.dimensional == 'Dim'):
 
-    """Run the solver"""
-    def run(self):
+                    self.eta_s = phasify_con(self.phi0, self.eta_s_in, self.eta_s_out)
 
-        self.begin()
+                    self.eta_p = self.eta_p_out #phasify_con(self.phi0, self.eta_p_in, self.eta_p_out)
 
-        self.dt = (1/self.sizex)/2
-        self.num_steps = int(self.T/self.dt)
+                    self.lamb = self.lamb_out #phasify_con(self.phi0, self.lamb_in, self.lamb_out)
 
-        set_log_active(False)
+                    self.c = phasify_con(self.phi0, 0, 1)
 
-        if (self.element == 'DG'):
+                elif (self.constitutive_equation == 'OB' or self.constitutive_equation == 'Giesekus') and (self.dimensional == 'NonDim'):
 
-            parameters['ghost_mode'] = 'shared_facet' 
+                    self.beta = phasify_con(self.phi0, self.beta1, self.beta2)
 
-        self.set_up_files()
-        self.mesh_constructor()
-        self.level_set()
-        self.fem_data()
-        self.bcs()
+                    self.Re = phasify_con(self.phi0, self.Re2*self.Re_eps, self.Re2)
 
-        self.ls_form(self.phi, self.phi0, self.psi, self.u0, self.fn)
+                    self.Wi = self.Wi2 #phasify_con(self.phi0, self.Wi1, self.Wi2)
 
-        if (self.method == 'NCons'):
+                    self.c = phasify_con(self.phi0, 0, 1)
 
-            self.nclsr_form(self.phi_rein, self.phi0, self.psi, self.sign)
-
-        elif (self.method == 'Cons'):
-
-            self.clsr_form(self.phi_rein, self.phi0, self.psi, self.phin, self.fn)
-
-        self.phi = Function(self.Q)
-        
-        self.mat_pams()
-
-        self.ns_form(self.u, self.u0, self.u_, self.p, self.p0, self.p_, self.phi, self.v, self.q, self.tau0)
-
-        if (self.fluid == 'Viscoelastic'):
-
-            self.constitutive_equation_form(self.tau, self.tau0, self.zeta, self.u0)
-            self.tau = Function(self.T)
-
-        self.t = 0
-        self.n = 0
-        self.q = 0
-
-        for self.n in tqdm(range(self.num_steps)):
-
-            self.t += self.dt
-
-            self.ls_solve()
-
-            if (self.n % self.rein_div == 0):
-
-                if (self.method == 'NCons'):
-
-                    self.nclsr_solve(self.phi0, self.phi00, self.phi, self.phi_rein)
-
-                elif (self.method == 'Cons'):
-
-                    self.clsr_solve(self.phi0, self.phi00, self.phi, self.phi_rein, self.phin, self.psin)
-            else:
-                
-                self.phi00.assign(self.phi0)
-
-            self.mat_pams()
-
-            if (self.fluid == 'Viscoelastic'):
-
-                self.constitutive_equation_solve()
-
-            self.ns_solve(self.bc_ns, self.u_, self.p_)
-
-            self.u0.assign(self.u_)
-            self.p0.assign(self.p_)
-            self.phi0.assign(self.phi)
-
-            if (self.fluid == 'Viscoelastic'):
-
-                self.tau0.assign(self.tau)
-
-            if (self.q % 1 == 0):
-
-                self.write_to_file()
-
-            self.process_data()
-
-            self.q += 1
-        
-        self.process_shape()
-
-        self.post_process()
-
-
-# case1 = Multiphase(test_case = None,
-#                    method = 'Cons',
-#                    fluid = 'Viscoelastic',
-#                    constitutive_equation = 'OB',
-#                    dimensional = 'NonDim',
-#                    stability = None,
-#                    ls_scheme = 'Euler',
-#                    lsr_method = 'old_method',
-#                    rein_steps = 1,
-#                    size = 50,
-#                    location = 'HAWK',
-#                    dimension = '2D',
-#                    ls_order = 2,
-#                    final_time = 0.13)
-
-case2 = Multiphase(test_case = 1,
-                   method = 'Cons',
-                   fluid = 'Newtonian',
-                   constitutive_equation = None,
-                   dimensional = 'Dim',
-                   stability = None,
-                   ls_scheme = 'Euler',
-                   lsr_method = 'old_method',
-                   rein_steps = 1,
-                   location = 'HAWK',
-                   dimension = '2D',
-                   ls_order = 2,
-                   element = 'DG')
-
-case2.run()
+                    self.theta = phasify_con(self.phi0, self.theta_in, self.theta_out)
